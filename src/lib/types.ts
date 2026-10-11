@@ -206,3 +206,88 @@ export interface ActivityFeedItem {
   pr_detail?: string;
   timestamp: string;
 }
+
+// =================== DIET & NUTRITION TYPES ===================
+
+export type MealType =
+  | "breakfast"
+  | "morning_snack"
+  | "lunch"
+  | "evening_snack"
+  | "dinner"
+  | "post_workout";
+
+export type FoodCategory =
+  | "tiffin_breakfast"
+  | "rice_curries"
+  | "non_veg_specialties"
+  | "chinese_indochinese"
+  | "lentils_sundal"
+  | "snacks_beverages"
+  | "fitness_staples";
+
+export interface MicronutrientProfile {
+  vitamin_a_mcg: number;
+  vitamin_c_mg: number;
+  vitamin_d_iu: number;
+  vitamin_b12_mcg: number;
+  iron_mg: number;
+  calcium_mg: number;
+  potassium_mg: number;
+  zinc_mg: number;
+}
+
+export interface BadNutrientProfile {
+  saturated_fat_g: number;
+  trans_fat_g: number;
+  sodium_mg: number;
+  added_sugar_g: number;
+  cholesterol_mg: number;
+}
+
+export interface FoodItem {
+  id: string;
+  name: string;
+  tamil_name: string;
+  category: FoodCategory;
+  serving_unit: string; // e.g. "piece (60g)", "cup cooked (150g)", "bowl (200g)", "100g", "glass (200ml)"
+  serving_size_grams: number;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fiber_g: number;
+  healthy_fat_g: number;
+  bad_nutrients: BadNutrientProfile;
+  micronutrients: MicronutrientProfile;
+  is_custom?: boolean;
+}
+
+export interface LoggedMealEntry {
+  id: string;
+  meal_type: MealType;
+  food_id: string;
+  food_name: string;
+  tamil_name: string;
+  servings: number;
+  serving_unit: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fiber_g: number;
+  healthy_fat_g: number;
+  bad_nutrients: BadNutrientProfile;
+  micronutrients: MicronutrientProfile;
+  logged_at: string;
+}
+
+export interface NutritionDailyTargets {
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  max_saturated_fat_g: number;
+  max_sodium_mg: number;
+  max_added_sugar_g: number;
+}
+

@@ -9,6 +9,7 @@ import {
   PlayCircle,
   BookOpen,
   Users,
+  UtensilsCrossed,
 } from "lucide-react";
 import { useFitness } from "@/lib/store/fitnessStore";
 import { cn } from "@/lib/utils";
@@ -19,14 +20,14 @@ export const MobileNav: React.FC = () => {
 
   const navItems = [
     { href: "/", label: "Home", icon: LayoutDashboard },
-    { href: "/workouts", label: "Routines", icon: Dumbbell },
+    { href: "/nutrition", label: "Diet", icon: UtensilsCrossed },
     {
       href: "/active",
       label: "Workout",
       icon: PlayCircle,
       isCenterAction: true,
     },
-    { href: "/exercises", label: "Library", icon: BookOpen },
+    { href: "/workouts", label: "Routines", icon: Dumbbell },
     { href: "/social", label: "Squad", icon: Users },
   ];
 

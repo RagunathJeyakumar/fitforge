@@ -14,6 +14,7 @@ import {
   Settings,
   Flame,
   Zap,
+  UtensilsCrossed,
 } from "lucide-react";
 import { useFitness } from "@/lib/store/fitnessStore";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { href: "/exercises", label: "Exercise Library", icon: BookOpen },
   { href: "/analytics", label: "Progress & Metrics", icon: BarChart3 },
   { href: "/social", label: "Squad & Challenges", icon: Users },
+  { href: "/nutrition", label: "Diet & Nutrition", icon: UtensilsCrossed },
   { href: "/history", label: "History Log", icon: History },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

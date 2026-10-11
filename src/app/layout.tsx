@@ -1,13 +1,38 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Providers } from "@/components/providers/Providers";
 import "./globals.css";
 
+export const viewport: Viewport = {
+  themeColor: "#0A0D0F",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: "cover",
+};
+
 export const metadata: Metadata = {
-  title: "FitForge — Personal Gym Fitness Tracker",
+  title: "FitForge — Gym Fitness Tracker",
   description:
-    "Modern, production-oriented gym tracker for serious lifters and private friend groups.",
+    "Track workouts, exercises, strength progression, and fitness goals with offline gym support.",
+  applicationName: "FitForge",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "FitForge",
+  },
+  formatDetection: {
+    telephone: false,
+  },
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
   },
 };
 

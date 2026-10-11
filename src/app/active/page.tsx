@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Play,
@@ -15,9 +15,12 @@ import {
   X,
   AlertTriangle,
   RotateCcw,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useFitness } from "@/lib/store/fitnessStore";
+import { usePwa } from "@/lib/pwa/PwaProvider";
 import { ActiveSetRow } from "@/components/workout/ActiveSetRow";
 import { RestTimerWidget } from "@/components/workout/RestTimerWidget";
 import { WorkoutSummaryModal } from "@/components/workout/WorkoutSummaryModal";
@@ -44,10 +47,24 @@ export default function ActiveWorkoutPage() {
     personalRecords,
   } = useFitness();
 
+  const { isOnline, pendingSyncCount, triggerManualSync } = usePwa();
+
   const [finishedSummarySession, setFinishedSummarySession] = useState<WorkoutSession | null>(null);
   const [showAddExerciseDrawer, setShowAddExerciseDrawer] = useState(false);
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  // Prevent accidental navigation away from an active gym workout
+  useEffect(() => {
+    if (!activeWorkout) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "You have an active gym workout session in progress. Leave now?";
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [activeWorkout]);
 
   // If no workout is active, show the quick-start selector
   if (!activeWorkout) {
@@ -204,6 +221,49 @@ export default function ActiveWorkoutPage() {
             </Button>
           </div>
         </div>
+
+        {/* Offline Gym Mode Alert Banner */}
+        {!isOnline && (
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold animate-in fade-in">
+            <div className="flex items-center gap-2.5">
+              <WifiOff className="h-4 w-4 shrink-0 text-amber-400 animate-pulse" />
+              <div>
+                <p className="font-bold text-white">Offline Gym Mode Active</p>
+                <p className="text-[11px] text-amber-300/80">
+                  Network disconnected. All completed sets are safely saved to local IndexedDB.
+                </p>
+              </div>
+            </div>
+            {pendingSyncCount > 0 && (
+              <span className="font-mono text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-1 rounded-full shrink-0">
+                {pendingSyncCount} queued
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Reconnected Sync Banner */}
+        {isOnline && pendingSyncCount > 0 && (
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-lime-electric/10 border border-lime-electric/30 text-lime-electric text-xs font-semibold animate-in fade-in">
+            <div className="flex items-center gap-2.5">
+              <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
+              <div>
+                <p className="font-bold text-white">Reconnected to Network</p>
+                <p className="text-[11px] text-lime-electric/80">
+                  Synchronizing {pendingSyncCount} locally recorded workout changes with server...
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={triggerManualSync}
+              className="h-8 text-xs font-bold border-lime-electric/50 text-lime-electric hover:bg-lime-electric/20"
+            >
+              Sync Now
+            </Button>
+          </div>
+        )}
 
         {/* Workout Progress Bar */}
         <div className="space-y-1.5">

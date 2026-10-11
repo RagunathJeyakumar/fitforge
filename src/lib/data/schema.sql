@@ -371,3 +371,86 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- =================== 13. NUTRITION & DIET TABLES ===================
+
+-- FOOD ITEMS TABLE (Curated South Indian & custom items)
+CREATE TABLE IF NOT EXISTS public.food_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    tamil_name TEXT,
+    category TEXT NOT NULL,
+    serving_unit TEXT NOT NULL,
+    serving_size_grams NUMERIC(6,1) NOT NULL DEFAULT 100,
+    calories INT NOT NULL DEFAULT 0,
+    protein_g NUMERIC(6,1) NOT NULL DEFAULT 0,
+    carbs_g NUMERIC(6,1) NOT NULL DEFAULT 0,
+    fiber_g NUMERIC(6,1) NOT NULL DEFAULT 0,
+    healthy_fat_g NUMERIC(6,1) NOT NULL DEFAULT 0,
+    saturated_fat_g NUMERIC(6,1) NOT NULL DEFAULT 0,
+    trans_fat_g NUMERIC(6,2) NOT NULL DEFAULT 0,
+    sodium_mg INT NOT NULL DEFAULT 0,
+    added_sugar_g NUMERIC(6,1) NOT NULL DEFAULT 0,
+    cholesterol_mg INT NOT NULL DEFAULT 0,
+    micronutrients JSONB DEFAULT '{}'::jsonb,
+    is_custom BOOLEAN NOT NULL DEFAULT false,
+    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- DIET LOGS (User food entries per eating time)
+CREATE TABLE IF NOT EXISTS public.diet_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    meal_type TEXT NOT NULL CHECK (meal_type IN ('breakfast', 'morning_snack', 'lunch', 'evening_snack', 'dinner', 'post_workout')),
+    food_id UUID REFERENCES public.food_items(id) ON DELETE SET NULL,
+    food_name TEXT NOT NULL,
+    tamil_name TEXT,
+    servings NUMERIC(4,2) NOT NULL DEFAULT 1.0,
+    serving_unit TEXT NOT NULL,
+    calories INT NOT NULL DEFAULT 0,
+    protein_g NUMERIC(6,1) NOT NULL DEFAULT 0,
+    carbs_g NUMERIC(6,1) NOT NULL DEFAULT 0,
+    fiber_g NUMERIC(6,1) NOT NULL DEFAULT 0,
+    healthy_fat_g NUMERIC(6,1) NOT NULL DEFAULT 0,
+    bad_nutrients JSONB NOT NULL DEFAULT '{}'::jsonb,
+    micronutrients JSONB NOT NULL DEFAULT '{}'::jsonb,
+    logged_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- NUTRITION TARGETS (User daily target goals)
+CREATE TABLE IF NOT EXISTS public.nutrition_targets (
+    user_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+    calories INT NOT NULL DEFAULT 2300,
+    protein_g NUMERIC(6,1) NOT NULL DEFAULT 145,
+    carbs_g NUMERIC(6,1) NOT NULL DEFAULT 240,
+    fat_g NUMERIC(6,1) NOT NULL DEFAULT 65,
+    fiber_g NUMERIC(6,1) NOT NULL DEFAULT 30,
+    max_saturated_fat_g NUMERIC(6,1) NOT NULL DEFAULT 20,
+    max_sodium_mg INT NOT NULL DEFAULT 2300,
+    max_added_sugar_g NUMERIC(6,1) NOT NULL DEFAULT 25,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- RLS FOR NUTRITION
+ALTER TABLE public.food_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.diet_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.nutrition_targets ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Food items viewable by all if public or owned"
+ON public.food_items FOR SELECT TO authenticated
+USING (is_custom = false OR created_by = auth.uid());
+
+CREATE POLICY "Users can insert custom food items"
+ON public.food_items FOR INSERT TO authenticated
+WITH CHECK (auth.uid() = created_by AND is_custom = true);
+
+CREATE POLICY "Diet logs are strictly private to the user"
+ON public.diet_logs FOR ALL TO authenticated
+USING (user_id = auth.uid());
+
+CREATE POLICY "Nutrition targets are private to the user"
+ON public.nutrition_targets FOR ALL TO authenticated
+USING (user_id = auth.uid());
+

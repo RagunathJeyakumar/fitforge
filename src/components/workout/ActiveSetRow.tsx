@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
-import { Check, Trash2, Award } from "lucide-react";
+import { Check, Trash2, Award, Cloud, HardDrive } from "lucide-react";
 import { WorkoutSetRecord, SetType } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { usePwa } from "@/lib/pwa/PwaProvider";
 
 interface ActiveSetRowProps {
   set: WorkoutSetRecord;
@@ -22,6 +23,7 @@ export const ActiveSetRow: React.FC<ActiveSetRowProps> = ({
   onComplete,
   onRemove,
 }) => {
+  const { isOnline } = usePwa();
   const isCompleted = set.is_completed;
 
   const handleWeightChange = (delta: number) => {
@@ -176,6 +178,31 @@ export const ActiveSetRow: React.FC<ActiveSetRowProps> = ({
       >
         <Check className={cn("h-6 w-6 stroke-[3]", isCompleted ? "text-charcoal-950" : "text-muted-foreground")} />
       </button>
+
+      {/* Set-level Persistence / Sync visual feedback */}
+      {isCompleted && (
+        <div
+          className={cn(
+            "hidden lg:flex items-center gap-1 text-[10px] font-mono px-1.5 py-1 rounded border transition-colors",
+            isOnline
+              ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+              : "text-amber-400 bg-amber-500/10 border-amber-500/20"
+          )}
+          title={isOnline ? "Set synced with server" : "Set safely stored in local IndexedDB"}
+        >
+          {isOnline ? (
+            <>
+              <Cloud className="h-3 w-3" />
+              <span>Synced</span>
+            </>
+          ) : (
+            <>
+              <HardDrive className="h-3 w-3" />
+              <span>Local</span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Remove Set Button */}
       <button

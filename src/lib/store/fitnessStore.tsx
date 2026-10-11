@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import {
   UserProfile,
   Exercise,
@@ -15,9 +15,14 @@ import {
   GroupChallenge,
   ActivityFeedItem,
   UserPrivacySettings,
+  FoodItem,
+  LoggedMealEntry,
+  MealType,
+  NutritionDailyTargets,
 } from "../types";
 import { INITIAL_EXERCISES } from "../data/initialExercises";
 import { DEFAULT_WORKOUT_TEMPLATES } from "../data/defaultTemplates";
+import { TAMIL_NADU_FOODS } from "../data/tamilNaduFoods";
 import {
   DEMO_CURRENT_USER,
   DEMO_WORKOUT_SESSIONS,
@@ -30,6 +35,12 @@ import {
 } from "../data/mockData";
 import { getSupabaseConfig } from "../supabase/config";
 import { getSupabaseBrowserClient } from "../supabase/client";
+import {
+  queueOfflineSetChange,
+  queueOfflineSessionCompletion,
+  clearUserOfflineData,
+  saveActiveSessionBackup,
+} from "../pwa/offlineSync";
 
 interface FitnessContextType {
   // Auth & Profile
@@ -91,6 +102,19 @@ interface FitnessContextType {
   activityFeed: ActivityFeedItem[];
   createGroup: (name: string, description: string) => FriendGroup;
   joinGroupByCode: (code: string) => boolean;
+
+  // Nutrition & Diet
+  foodDatabase: FoodItem[];
+  customFoods: FoodItem[];
+  addCustomFood: (food: Omit<FoodItem, "id" | "is_custom">) => FoodItem;
+  deleteCustomFood: (id: string) => void;
+  loggedMeals: LoggedMealEntry[];
+  nutritionTargets: NutritionDailyTargets;
+  addMealEntry: (mealType: MealType, foodItem: FoodItem, servings: number, dateStr?: string) => void;
+  updateMealEntryServings: (id: string, newServings: number) => void;
+  removeMealEntry: (id: string) => void;
+  updateNutritionTargets: (targets: Partial<NutritionDailyTargets>) => void;
+  clearTodayMeals: (dateStr?: string) => void;
 }
 
 const FitnessContext = createContext<FitnessContextType | undefined>(undefined);
@@ -103,11 +127,153 @@ const STORAGE_KEYS = {
   METRICS: "fitforge_metrics_v2",
   USER: "fitforge_user_profile_v2",
   CUSTOM_EXERCISES: "fitforge_custom_exercises_v2",
+  CUSTOM_FOODS: "fitforge_custom_foods_v2",
   IS_DEMO: "fitforge_demo_mode_v2",
   PRIVACY: "fitforge_privacy_v2",
   GROUPS: "fitforge_groups_v2",
   MEMBERS: "fitforge_group_members_v2",
   CHALLENGES: "fitforge_challenges_v2",
+  LOGGED_MEALS: "fitforge_logged_meals_v2",
+  NUTRITION_TARGETS: "fitforge_nutrition_targets_v2",
+};
+
+const DEFAULT_NUTRITION_TARGETS: NutritionDailyTargets = {
+  calories: 2300,
+  protein_g: 145,
+  carbs_g: 240,
+  fat_g: 65,
+  fiber_g: 30,
+  max_saturated_fat_g: 20,
+  max_sodium_mg: 2300,
+  max_added_sugar_g: 25,
+};
+
+const getInitialDemoMeals = (): LoggedMealEntry[] => {
+  const today = typeof window !== "undefined"
+    ? new Date().toISOString().split("T")[0]
+    : "2026-10-11";
+
+  return [
+    {
+      id: "meal-1",
+      meal_type: "breakfast",
+      food_id: "tn-idli",
+      food_name: "Idli (Steamed Rice-Urad Dal Cake)",
+      tamil_name: "இட்லி",
+      servings: 3,
+      serving_unit: "piece (50g)",
+      calories: 174,
+      protein_g: 6.3,
+      carbs_g: 36.0,
+      fiber_g: 2.4,
+      healthy_fat_g: 0.6,
+      bad_nutrients: { saturated_fat_g: 0.15, trans_fat_g: 0, sodium_mg: 285, added_sugar_g: 0, cholesterol_mg: 0 },
+      micronutrients: { vitamin_a_mcg: 6, vitamin_c_mg: 0, vitamin_d_iu: 0, vitamin_b12_mcg: 0, iron_mg: 1.5, calcium_mg: 36, potassium_mg: 135, zinc_mg: 0.9 },
+      logged_at: `${today}T08:30:00Z`,
+    },
+    {
+      id: "meal-2",
+      meal_type: "breakfast",
+      food_id: "tn-sambar",
+      food_name: "Drumstick & Vegetable Sambar",
+      tamil_name: "முருங்கைக்காய் சாம்பார்",
+      servings: 1,
+      serving_unit: "bowl (150ml)",
+      calories: 110,
+      protein_g: 5.4,
+      carbs_g: 16.5,
+      fiber_g: 3.8,
+      healthy_fat_g: 2.2,
+      bad_nutrients: { saturated_fat_g: 0.6, trans_fat_g: 0, sodium_mg: 420, added_sugar_g: 0.8, cholesterol_mg: 0 },
+      micronutrients: { vitamin_a_mcg: 95, vitamin_c_mg: 12, vitamin_d_iu: 0, vitamin_b12_mcg: 0, iron_mg: 2.1, calcium_mg: 48, potassium_mg: 280, zinc_mg: 0.9 },
+      logged_at: `${today}T08:32:00Z`,
+    },
+    {
+      id: "meal-3",
+      meal_type: "morning_snack",
+      food_id: "tn-elaneer",
+      food_name: "Tender Coconut Water / Elaneer",
+      tamil_name: "இளநீர்",
+      servings: 1,
+      serving_unit: "nut (250ml)",
+      calories: 48,
+      protein_g: 1.8,
+      carbs_g: 10.5,
+      fiber_g: 1.2,
+      healthy_fat_g: 0.3,
+      bad_nutrients: { saturated_fat_g: 0.2, trans_fat_g: 0, sodium_mg: 85, added_sugar_g: 0, cholesterol_mg: 0 },
+      micronutrients: { vitamin_a_mcg: 0, vitamin_c_mg: 14, vitamin_d_iu: 0, vitamin_b12_mcg: 0, iron_mg: 0.8, calcium_mg: 48, potassium_mg: 620, zinc_mg: 0.3 },
+      logged_at: `${today}T11:15:00Z`,
+    },
+    {
+      id: "meal-4",
+      meal_type: "lunch",
+      food_id: "tn-ponni-rice",
+      food_name: "Boiled Ponni White Rice (Cooked)",
+      tamil_name: "பொன்னி புழுங்கல் அரிசி சாதம்",
+      servings: 1.5,
+      serving_unit: "cup cooked (150g)",
+      calories: 292,
+      protein_g: 5.8,
+      carbs_g: 63.8,
+      fiber_g: 1.6,
+      healthy_fat_g: 0.7,
+      bad_nutrients: { saturated_fat_g: 0.15, trans_fat_g: 0, sodium_mg: 7.5, added_sugar_g: 0, cholesterol_mg: 0 },
+      micronutrients: { vitamin_a_mcg: 0, vitamin_c_mg: 0, vitamin_d_iu: 0, vitamin_b12_mcg: 0, iron_mg: 1.2, calcium_mg: 21, potassium_mg: 82, zinc_mg: 1.2 },
+      logged_at: `${today}T13:30:00Z`,
+    },
+    {
+      id: "meal-5",
+      meal_type: "lunch",
+      food_id: "tn-chicken-sukka",
+      food_name: "Chettinad Chicken Chukka / Varuval",
+      tamil_name: "செட்டிநாடு சிக்கன் சுக்கா",
+      servings: 1,
+      serving_unit: "portion (150g)",
+      calories: 270,
+      protein_g: 32.5,
+      carbs_g: 5.2,
+      fiber_g: 1.8,
+      healthy_fat_g: 9.8,
+      bad_nutrients: { saturated_fat_g: 3.2, trans_fat_g: 0, sodium_mg: 480, added_sugar_g: 0, cholesterol_mg: 95 },
+      micronutrients: { vitamin_a_mcg: 45, vitamin_c_mg: 5, vitamin_d_iu: 8, vitamin_b12_mcg: 0.8, iron_mg: 2.4, calcium_mg: 28, potassium_mg: 380, zinc_mg: 2.2 },
+      logged_at: `${today}T13:35:00Z`,
+    },
+    {
+      id: "meal-6",
+      meal_type: "lunch",
+      food_id: "tn-keerai-masiyal",
+      food_name: "Murungai / Siru Keerai Masiyal",
+      tamil_name: "முருங்கைக்கீரை மசியல்",
+      servings: 1,
+      serving_unit: "cup (120g)",
+      calories: 85,
+      protein_g: 4.8,
+      carbs_g: 9.5,
+      fiber_g: 4.2,
+      healthy_fat_g: 2.5,
+      bad_nutrients: { saturated_fat_g: 0.4, trans_fat_g: 0, sodium_mg: 180, added_sugar_g: 0, cholesterol_mg: 0 },
+      micronutrients: { vitamin_a_mcg: 750, vitamin_c_mg: 45, vitamin_d_iu: 0, vitamin_b12_mcg: 0, iron_mg: 5.2, calcium_mg: 185, potassium_mg: 380, zinc_mg: 1.1 },
+      logged_at: `${today}T13:40:00Z`,
+    },
+    {
+      id: "meal-7",
+      meal_type: "post_workout",
+      food_id: "tn-whey-water",
+      food_name: "Whey Protein Isolate (in Water)",
+      tamil_name: "வே புரத பவுடர் (தண்ணீரில்)",
+      servings: 1,
+      serving_unit: "scoop (30g)",
+      calories: 120,
+      protein_g: 25.0,
+      carbs_g: 1.5,
+      fiber_g: 0.2,
+      healthy_fat_g: 0.8,
+      bad_nutrients: { saturated_fat_g: 0.4, trans_fat_g: 0, sodium_mg: 110, added_sugar_g: 0, cholesterol_mg: 15 },
+      micronutrients: { vitamin_a_mcg: 0, vitamin_c_mg: 0, vitamin_d_iu: 0, vitamin_b12_mcg: 0.6, iron_mg: 0.3, calcium_mg: 140, potassium_mg: 160, zinc_mg: 0.4 },
+      logged_at: `${today}T18:45:00Z`,
+    },
+  ];
 };
 
 export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -141,6 +307,15 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [challenges, setChallenges] = useState<GroupChallenge[]>(DEMO_CHALLENGES);
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>(DEMO_ACTIVITY_FEED);
 
+  // Nutrition & Diet State
+  const [customFoods, setCustomFoods] = useState<FoodItem[]>([]);
+  const [loggedMeals, setLoggedMeals] = useState<LoggedMealEntry[]>(getInitialDemoMeals);
+  const [nutritionTargets, setNutritionTargets] = useState<NutritionDailyTargets>(DEFAULT_NUTRITION_TARGETS);
+
+  const foodDatabase = useMemo(() => {
+    return [...customFoods, ...TAMIL_NADU_FOODS];
+  }, [customFoods]);
+
   // Load state from local storage on mount
   useEffect(() => {
     try {
@@ -163,6 +338,11 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (savedCustomExercises) {
         const parsed = JSON.parse(savedCustomExercises);
         setExercises([...INITIAL_EXERCISES, ...parsed]);
+      }
+
+      const savedCustomFoods = localStorage.getItem(STORAGE_KEYS.CUSTOM_FOODS);
+      if (savedCustomFoods) {
+        setCustomFoods(JSON.parse(savedCustomFoods));
       }
 
       const savedPlans = localStorage.getItem(STORAGE_KEYS.PLANS);
@@ -194,6 +374,16 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const savedGroups = localStorage.getItem(STORAGE_KEYS.GROUPS);
       if (savedGroups) {
         setGroups(JSON.parse(savedGroups));
+      }
+
+      const savedMeals = localStorage.getItem(STORAGE_KEYS.LOGGED_MEALS);
+      if (savedMeals) {
+        setLoggedMeals(JSON.parse(savedMeals));
+      }
+
+      const savedTargets = localStorage.getItem(STORAGE_KEYS.NUTRITION_TARGETS);
+      if (savedTargets) {
+        setNutritionTargets(JSON.parse(savedTargets));
       }
     } catch (e) {
       console.warn("Could not read local storage state:", e);
@@ -423,29 +613,40 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const targetExerciseId = exerciseIds[exerciseIndex];
       if (!targetExerciseId) return prev;
 
+      let updatedTargetSet: WorkoutSetRecord | undefined;
       let currentExerciseSetCount = -1;
       const updatedSets = prev.session.sets.map((s) => {
         if (s.exercise_id === targetExerciseId) {
           currentExerciseSetCount++;
           if (currentExerciseSetCount === setIndex) {
-            return {
+            const modified = {
               ...s,
               [field]: value,
             };
+            updatedTargetSet = modified;
+            return modified;
           }
         }
         return s;
       });
 
+      const nextSession = {
+        ...prev.session,
+        sets: updatedSets,
+      };
+
+      // Queue into IndexedDB for reliable offline gym persistence
+      if (updatedTargetSet) {
+        queueOfflineSetChange(user?.id || "user-marcus", prev.session.id, "update_set", updatedTargetSet);
+        saveActiveSessionBackup(user?.id || "user-marcus", nextSession);
+      }
+
       return {
         ...prev,
-        session: {
-          ...prev.session,
-          sets: updatedSets,
-        },
+        session: nextSession,
       };
     });
-  }, []);
+  }, [user]);
 
   const addSetToExercise = useCallback((exerciseIndex: number) => {
     setActiveWorkout((prev) => {
@@ -565,6 +766,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       let targetSetReps = 0;
       let wasAlreadyCompleted = false;
 
+      let updatedTargetSet: WorkoutSetRecord | undefined;
       const updatedSets = prev.session.sets.map((s) => {
         if (s.exercise_id === targetExerciseId) {
           count++;
@@ -572,10 +774,12 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
             wasAlreadyCompleted = s.is_completed;
             targetSetWeight = s.weight_kg;
             targetSetReps = s.reps;
-            return {
+            const modified = {
               ...s,
               is_completed: !s.is_completed,
             };
+            updatedTargetSet = modified;
+            return modified;
           }
         }
         return s;
@@ -584,17 +788,25 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // If we just completed the set (toggled from false to true), start rest timer
       const shouldStartTimer = !wasAlreadyCompleted;
 
+      const nextSession = {
+        ...prev.session,
+        sets: updatedSets,
+      };
+
+      // Queue into IndexedDB for offline gym persistence
+      if (updatedTargetSet) {
+        queueOfflineSetChange(user?.id || "user-marcus", prev.session.id, "complete_set", updatedTargetSet);
+        saveActiveSessionBackup(user?.id || "user-marcus", nextSession);
+      }
+
       return {
         ...prev,
-        session: {
-          ...prev.session,
-          sets: updatedSets,
-        },
+        session: nextSession,
         timerSecondsRemaining: shouldStartTimer ? prev.timerTargetSeconds : prev.timerSecondsRemaining,
         isTimerRunning: shouldStartTimer ? true : prev.isTimerRunning,
       };
     });
-  }, []);
+  }, [user]);
 
   // REST TIMER CONTROLS
   const startRestTimer = useCallback((seconds: number) => {
@@ -689,6 +901,9 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return updated;
     });
 
+    // Queue session completion to IndexedDB for offline sync
+    queueOfflineSessionCompletion(user?.id || "user-marcus", finishedSession);
+
     // Add activity feed item
     const feedItem: ActivityFeedItem = {
       id: `act-${Date.now()}`,
@@ -773,11 +988,15 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.warn("Supabase sign out error:", e);
       }
     }
+    // Clean up local IndexedDB cache for user to prevent cross-account leaks on shared device
+    if (user?.id) {
+      clearUserOfflineData(user.id);
+    }
     setUser(null);
     setIsDemoMode(false);
     localStorage.removeItem(STORAGE_KEYS.USER);
     localStorage.setItem(STORAGE_KEYS.IS_DEMO, "false");
-  }, [isSupabaseConfigured]);
+  }, [isSupabaseConfigured, user?.id]);
 
   // SOCIAL & GROUPS
   const createGroup = useCallback((name: string, description: string): FriendGroup => {
@@ -820,6 +1039,158 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setGroups((prev) => [joinedGroup, ...prev]);
     return true;
   }, [groups]);
+
+  // NUTRITION & DIET HANDLERS
+  const addMealEntry = useCallback(
+    (mealType: MealType, foodItem: FoodItem, servings: number, dateStr?: string) => {
+      const s = Math.max(0.1, servings);
+      let loggedAt = new Date().toISOString();
+      if (dateStr) {
+        const now = new Date();
+        const timePart = now.toTimeString().split(" ")[0];
+        loggedAt = `${dateStr}T${timePart}Z`;
+      }
+
+      const newEntry: LoggedMealEntry = {
+        id: `meal-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        meal_type: mealType,
+        food_id: foodItem.id,
+        food_name: foodItem.name,
+        tamil_name: foodItem.tamil_name,
+        servings: s,
+        serving_unit: foodItem.serving_unit,
+        calories: Math.round(foodItem.calories * s),
+        protein_g: Number((foodItem.protein_g * s).toFixed(1)),
+        carbs_g: Number((foodItem.carbs_g * s).toFixed(1)),
+        fiber_g: Number((foodItem.fiber_g * s).toFixed(1)),
+        healthy_fat_g: Number((foodItem.healthy_fat_g * s).toFixed(1)),
+        bad_nutrients: {
+          saturated_fat_g: Number((foodItem.bad_nutrients.saturated_fat_g * s).toFixed(1)),
+          trans_fat_g: Number((foodItem.bad_nutrients.trans_fat_g * s).toFixed(2)),
+          sodium_mg: Math.round(foodItem.bad_nutrients.sodium_mg * s),
+          added_sugar_g: Number((foodItem.bad_nutrients.added_sugar_g * s).toFixed(1)),
+          cholesterol_mg: Math.round(foodItem.bad_nutrients.cholesterol_mg * s),
+        },
+        micronutrients: {
+          vitamin_a_mcg: Math.round(foodItem.micronutrients.vitamin_a_mcg * s),
+          vitamin_c_mg: Math.round(foodItem.micronutrients.vitamin_c_mg * s),
+          vitamin_d_iu: Math.round(foodItem.micronutrients.vitamin_d_iu * s),
+          vitamin_b12_mcg: Number((foodItem.micronutrients.vitamin_b12_mcg * s).toFixed(1)),
+          iron_mg: Number((foodItem.micronutrients.iron_mg * s).toFixed(1)),
+          calcium_mg: Math.round(foodItem.micronutrients.calcium_mg * s),
+          potassium_mg: Math.round(foodItem.micronutrients.potassium_mg * s),
+          zinc_mg: Number((foodItem.micronutrients.zinc_mg * s).toFixed(1)),
+        },
+        logged_at: loggedAt,
+      };
+
+      setLoggedMeals((prev) => {
+        const updated = [newEntry, ...prev];
+        localStorage.setItem(STORAGE_KEYS.LOGGED_MEALS, JSON.stringify(updated));
+        return updated;
+      });
+    },
+    []
+  );
+
+  const updateMealEntryServings = useCallback((id: string, newServings: number) => {
+    if (newServings <= 0) {
+      setLoggedMeals((prev) => {
+        const updated = prev.filter((m) => m.id !== id);
+        localStorage.setItem(STORAGE_KEYS.LOGGED_MEALS, JSON.stringify(updated));
+        return updated;
+      });
+      return;
+    }
+
+    setLoggedMeals((prev) => {
+      const target = prev.find((m) => m.id === id);
+      if (!target) return prev;
+      const ratio = newServings / target.servings;
+      const updated = prev.map((m) => {
+        if (m.id !== id) return m;
+        return {
+          ...m,
+          servings: newServings,
+          calories: Math.round(m.calories * ratio),
+          protein_g: Number((m.protein_g * ratio).toFixed(1)),
+          carbs_g: Number((m.carbs_g * ratio).toFixed(1)),
+          fiber_g: Number((m.fiber_g * ratio).toFixed(1)),
+          healthy_fat_g: Number((m.healthy_fat_g * ratio).toFixed(1)),
+          bad_nutrients: {
+            saturated_fat_g: Number((m.bad_nutrients.saturated_fat_g * ratio).toFixed(1)),
+            trans_fat_g: Number((m.bad_nutrients.trans_fat_g * ratio).toFixed(2)),
+            sodium_mg: Math.round(m.bad_nutrients.sodium_mg * ratio),
+            added_sugar_g: Number((m.bad_nutrients.added_sugar_g * ratio).toFixed(1)),
+            cholesterol_mg: Math.round(m.bad_nutrients.cholesterol_mg * ratio),
+          },
+          micronutrients: {
+            vitamin_a_mcg: Math.round(m.micronutrients.vitamin_a_mcg * ratio),
+            vitamin_c_mg: Math.round(m.micronutrients.vitamin_c_mg * ratio),
+            vitamin_d_iu: Math.round(m.micronutrients.vitamin_d_iu * ratio),
+            vitamin_b12_mcg: Number((m.micronutrients.vitamin_b12_mcg * ratio).toFixed(1)),
+            iron_mg: Number((m.micronutrients.iron_mg * ratio).toFixed(1)),
+            calcium_mg: Math.round(m.micronutrients.calcium_mg * ratio),
+            potassium_mg: Math.round(m.micronutrients.potassium_mg * ratio),
+            zinc_mg: Number((m.micronutrients.zinc_mg * ratio).toFixed(1)),
+          },
+        };
+      });
+      localStorage.setItem(STORAGE_KEYS.LOGGED_MEALS, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const removeMealEntry = useCallback((id: string) => {
+    setLoggedMeals((prev) => {
+      const updated = prev.filter((m) => m.id !== id);
+      localStorage.setItem(STORAGE_KEYS.LOGGED_MEALS, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const addCustomFood = useCallback((newFoodData: Omit<FoodItem, "id" | "is_custom">) => {
+    const newFood: FoodItem = {
+      ...newFoodData,
+      id: `custom-food-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      is_custom: true,
+    };
+    setCustomFoods((prev) => {
+      const updated = [newFood, ...prev];
+      localStorage.setItem(STORAGE_KEYS.CUSTOM_FOODS, JSON.stringify(updated));
+      return updated;
+    });
+    return newFood;
+  }, []);
+
+  const deleteCustomFood = useCallback((id: string) => {
+    setCustomFoods((prev) => {
+      const updated = prev.filter((f) => f.id !== id);
+      localStorage.setItem(STORAGE_KEYS.CUSTOM_FOODS, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const updateNutritionTargets = useCallback((targets: Partial<NutritionDailyTargets>) => {
+    setNutritionTargets((prev) => {
+      const updated = { ...prev, ...targets };
+      localStorage.setItem(STORAGE_KEYS.NUTRITION_TARGETS, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const clearTodayMeals = useCallback((dateStr?: string) => {
+    setLoggedMeals((prev) => {
+      let updated: LoggedMealEntry[];
+      if (dateStr) {
+        updated = prev.filter((m) => !m.logged_at.startsWith(dateStr));
+      } else {
+        updated = [];
+      }
+      localStorage.setItem(STORAGE_KEYS.LOGGED_MEALS, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
 
   return (
     <FitnessContext.Provider
@@ -872,6 +1243,19 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         activityFeed,
         createGroup,
         joinGroupByCode,
+
+        // Nutrition & Diet
+        foodDatabase,
+        customFoods,
+        addCustomFood,
+        deleteCustomFood,
+        loggedMeals,
+        nutritionTargets,
+        addMealEntry,
+        updateMealEntryServings,
+        removeMealEntry,
+        updateNutritionTargets,
+        clearTodayMeals,
       }}
     >
       {children}

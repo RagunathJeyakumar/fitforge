@@ -2,10 +2,12 @@
 
 import React from "react";
 import Link from "next/link";
-import { Zap, Timer, Play, Pause, Plus, Sparkles } from "lucide-react";
+import { Zap, Timer, Play, Pause, Plus, Sparkles, Download, Smartphone } from "lucide-react";
 import { useFitness } from "@/lib/store/fitnessStore";
+import { usePwa } from "@/lib/pwa/PwaProvider";
 import { formatDuration } from "@/lib/utils";
 import { Badge } from "../ui/badge";
+import { NetworkStatusBadge } from "../pwa/NetworkStatusBadge";
 
 export const Header: React.FC = () => {
   const {
@@ -16,8 +18,15 @@ export const Header: React.FC = () => {
     isSupabaseConfigured,
   } = useFitness();
 
+  const {
+    isInstallable,
+    isInstalled,
+    isIos,
+    triggerInstall,
+  } = usePwa();
+
   return (
-    <header className="sticky top-0 z-30 w-full bg-charcoal-950/80 backdrop-blur-xl border-b border-white/5 px-4 lg:px-8 py-3 flex items-center justify-between">
+    <header className="sticky top-0 z-30 w-full bg-charcoal-950/80 backdrop-blur-xl border-b border-white/5 px-4 lg:px-8 py-3 flex items-center justify-between gap-3">
       {/* Mobile Brand */}
       <div className="flex items-center gap-3 lg:hidden">
         <Link href="/" className="flex items-center gap-2">
@@ -58,8 +67,32 @@ export const Header: React.FC = () => {
         </div>
       )}
 
-      {/* Right: Environment / Demo Badge & Quick Actions */}
-      <div className="ml-auto flex items-center gap-3">
+      {/* Right: Connectivity Status, PWA Install & Environment Badges */}
+      <div className="ml-auto flex items-center gap-2.5 sm:gap-3 flex-wrap justify-end">
+        {/* PWA Network & Offline Gym Status */}
+        <NetworkStatusBadge />
+
+        {/* PWA Install Button when available and not installed */}
+        {!isInstalled && (isInstallable || isIos) && (
+          <button
+            onClick={triggerInstall}
+            className="hidden md:inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg bg-charcoal-800 hover:bg-charcoal-700 text-lime-electric border border-lime-electric/30 transition-colors"
+            title={isIos ? "Learn how to install FitForge on iOS" : "Install FitForge as standalone app"}
+          >
+            {isIos ? (
+              <>
+                <Smartphone className="h-3 w-3" />
+                <span>Install iOS</span>
+              </>
+            ) : (
+              <>
+                <Download className="h-3 w-3" />
+                <span>Install App</span>
+              </>
+            )}
+          </button>
+        )}
+
         {isDemoMode && (
           <Link href="/settings" title="Running in Interactive Demo Mode">
             <Badge variant="default" className="cursor-pointer gap-1 text-[11px] hover:bg-lime-electric/25">

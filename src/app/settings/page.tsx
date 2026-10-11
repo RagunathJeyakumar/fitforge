@@ -13,9 +13,15 @@ import {
   LogOut,
   HelpCircle,
   ExternalLink,
+  Smartphone,
+  Download,
+  RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useFitness } from "@/lib/store/fitnessStore";
+import { usePwa } from "@/lib/pwa/PwaProvider";
+import { clearUserOfflineData } from "@/lib/pwa/offlineSync";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +38,17 @@ export default function SettingsPage() {
     isSupabaseConfigured,
     logout,
   } = useFitness();
+
+  const {
+    isOnline,
+    pendingSyncCount,
+    isInstallable,
+    isInstalled,
+    isIos,
+    triggerInstall,
+    triggerManualSync,
+    setShowIosModal,
+  } = usePwa();
 
   const [fullName, setFullName] = useState(user?.full_name || "");
   const [fitnessGoal, setFitnessGoal] = useState<FitnessGoal>(user?.fitness_goal || "hypertrophy");
@@ -151,6 +168,136 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key`}
               </p>
             </div>
           )}
+        </Card>
+
+        {/* PWA & Offline Gym Mode Management Card */}
+        <Card className="p-6 border-white/5 bg-charcoal-900/90 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-lime-electric/15 border border-lime-electric/30 flex items-center justify-center text-lime-electric">
+                <Smartphone className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base">
+                  Progressive Web App (PWA) & Gym Offline Engine
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Standalone device installation, service worker caching, and IndexedDB sync
+                </p>
+              </div>
+            </div>
+
+            {isInstalled ? (
+              <Badge variant="default" className="bg-lime-electric/20 text-lime-electric border-lime-electric/40 text-xs">
+                Installed (Standalone)
+              </Badge>
+            ) : isInstallable ? (
+              <Badge variant="secondary" className="bg-sky-500/15 text-sky-400 border-sky-500/30 text-xs">
+                Ready to Install
+              </Badge>
+            ) : isIos ? (
+              <Badge variant="secondary" className="bg-amber-500/15 text-amber-400 border-amber-500/30 text-xs">
+                iOS Safari Mode
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground text-xs">
+                Web Browser Mode
+              </Badge>
+            )}
+          </div>
+
+          <div className="space-y-3 p-4 rounded-2xl bg-charcoal-950/70 border border-white/5 text-xs">
+            {/* Install Button Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
+              <div>
+                <span className="font-bold text-white block">App Installation Status:</span>
+                <span className="text-muted-foreground">
+                  {isInstalled
+                    ? "FitForge is installed as a standalone app on your device with no browser navigation bar."
+                    : isInstallable
+                    ? "Install for instant gym launching, offline set recording, and full-screen experience."
+                    : isIos
+                    ? "Use Safari's 'Add to Home Screen' to launch in fullscreen gym mode."
+                    : "Running in modern web browser. Offline caching active."}
+                </span>
+              </div>
+
+              {!isInstalled && (
+                <div className="shrink-0">
+                  {isInstallable && (
+                    <Button
+                      size="sm"
+                      onClick={triggerInstall}
+                      className="font-black text-xs h-8 shadow-lime-sm"
+                    >
+                      <Download className="h-3.5 w-3.5 mr-1.5" />
+                      Install FitForge
+                    </Button>
+                  )}
+                  {isIos && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowIosModal(true)}
+                      className="text-xs h-8 border-lime-electric/40 text-lime-electric hover:bg-lime-electric/10"
+                    >
+                      <Smartphone className="h-3.5 w-3.5 mr-1.5" />
+                      View iOS Guide
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Offline Sync Status Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
+              <div>
+                <span className="font-bold text-white block">Gym Connectivity & Sync:</span>
+                <span className="text-muted-foreground">
+                  {isOnline ? "Online (Wi-Fi / Cellular active)" : "Offline (Gym Mode active — saving to IndexedDB)"}
+                  {pendingSyncCount > 0 && ` • ${pendingSyncCount} pending change(s) queued for sync.`}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={triggerManualSync}
+                  className="text-xs h-8 border-white/10 hover:border-lime-electric/50 text-white"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 mr-1 text-lime-electric" />
+                  Sync Now
+                </Button>
+              </div>
+            </div>
+
+            {/* Service Worker Cache Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="font-bold text-white block">Service Worker & Cache Version:</span>
+                <span className="text-muted-foreground font-mono text-[11px]">
+                  fitforge-v1.0.0 (Shell precache, Stale-While-Revalidate static, Auth bypassed)
+                </span>
+              </div>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  if (user?.id) {
+                    await clearUserOfflineData(user.id);
+                    triggerManualSync();
+                    alert("Local gym cache has been safely cleared!");
+                  }
+                }}
+                className="text-xs h-8 text-rose-400 border-rose-500/20 hover:bg-rose-500/10 shrink-0"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                Clear Local Cache
+              </Button>
+            </div>
+          </div>
         </Card>
 
         {/* Profile Settings Form */}
