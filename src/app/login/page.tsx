@@ -12,24 +12,46 @@ import { Badge } from "@/components/ui/badge";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { toggleDemoMode, clearToBlankState, isSupabaseConfigured } = useFitness();
+  const { toggleDemoMode, clearToBlankState, isSupabaseConfigured, user, isDemoMode } = useFitness();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // 1. If already authenticated with real account, redirect to dashboard immediately
+  React.useEffect(() => {
+    if (user && !isDemoMode) {
+      router.push("/");
+    }
+  }, [user, isDemoMode, router]);
+
+  // 2. Handle incoming Magic Link tokens and error parameters
   React.useEffect(() => {
     if (typeof window === "undefined") return;
+
+    // If URL hash contains access_token, user is authenticated via Magic Link!
+    if (window.location.hash.includes("access_token")) {
+      setLoading(true);
+      setErrorMsg("");
+      const supabase = getSupabaseBrowserClient();
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          router.push("/");
+        }
+      });
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const desc = hash.get("error_description") || params.get("error_description");
     const err = params.get("error") || hash.get("error");
     if (desc) {
       setErrorMsg(decodeURIComponent(desc).replace(/\+/g, " "));
-    } else if (err) {
-      setErrorMsg("Authentication failed. Please verify your Supabase and Google OAuth settings.");
+    } else if (err && err !== "undefined") {
+      setErrorMsg("Authentication failed. Please verify your Supabase credentials.");
     }
-  }, []);
+  }, [router]);
 
   const handleGoogleSignIn = async () => {
     if (!isSupabaseConfigured) {
