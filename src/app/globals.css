@@ -1,26 +1,109 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: 216 28% 7%; /* #0D1015 Deep Charcoal */
+    --foreground: 210 20% 98%;
+
+    --card: 217 24% 10%; /* #121720 Charcoal Surface */
+    --card-foreground: 210 20% 98%;
+
+    --popover: 217 24% 10%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 73 100% 50%; /* #CCFF00 Electric Lime */
+    --primary-foreground: 216 28% 7%;
+    --primary-hover: 73 95% 45%;
+
+    --secondary: 218 19% 16%;
+    --secondary-foreground: 210 20% 95%;
+
+    --muted: 217 19% 14%;
+    --muted-foreground: 215 16% 65%;
+
+    --accent: 73 100% 50%;
+    --accent-foreground: 216 28% 7%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 20% 98%;
+
+    --border: 217 19% 18%;
+    --input: 217 19% 18%;
+    --ring: 73 100% 50%;
+
+    --radius: 0.75rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased min-h-screen selection:bg-lime-electric selection:text-charcoal-950;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Custom Scrollbar for Sleek Dark Aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0d1015;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #222b35;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #323e4d;
+}
+
+/* Glassmorphism utilities */
+.glass-panel {
+  background: rgba(18, 23, 32, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(18, 23, 32, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-card:hover {
+  border-color: rgba(204, 255, 0, 0.25);
+  box-shadow: 0 0 20px rgba(204, 255, 0, 0.05);
+}
+
+/* Glow effects */
+.lime-glow {
+  box-shadow: 0 0 20px rgba(204, 255, 0, 0.35);
+}
+
+.lime-glow-subtle {
+  box-shadow: 0 0 12px rgba(204, 255, 0, 0.15);
+}
+
+.lime-border-glow {
+  box-shadow: 0 0 0 1px #ccff00, 0 0 16px rgba(204, 255, 0, 0.3);
+}
+
+/* Remove up/down spinners on number inputs for workout weights/reps */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }
