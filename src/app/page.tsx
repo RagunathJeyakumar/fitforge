@@ -48,11 +48,16 @@ export default function DashboardPage() {
   // Next recommended workout routine
   const recommendedPlan = workoutPlans[0];
 
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <AppShell>
       <div className="space-y-8 animate-in fade-in duration-300">
         {/* Demo Mode Notice & Action Banner */}
-        {isDemoMode && (
+        {mounted && isDemoMode && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-charcoal-900 border border-lime-electric/30 shadow-lg animate-in slide-in-from-top">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-xl bg-lime-electric/20 border border-lime-electric/40 flex items-center justify-center text-lime-electric shrink-0">

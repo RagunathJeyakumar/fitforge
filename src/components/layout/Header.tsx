@@ -26,6 +26,12 @@ export const Header: React.FC = () => {
     triggerInstall,
   } = usePwa();
 
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <header className="sticky top-0 z-30 w-full bg-charcoal-950/80 backdrop-blur-xl border-b border-white/5 px-4 lg:px-8 py-3 flex items-center justify-between gap-3">
       {/* Mobile Brand */}
@@ -94,18 +100,20 @@ export const Header: React.FC = () => {
           </button>
         )}
 
-        {isDemoMode ? (
-          <Link
-            href="/login"
-            className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-lg bg-lime-electric text-charcoal-950 hover:bg-lime-electric/90 shadow-lime-sm transition-all"
-          >
-            <LogIn className="h-3.5 w-3.5" />
-            Sign In with Google
-          </Link>
-        ) : (
-          <Badge variant="secondary" className="text-[11px] text-emerald-400 border-emerald-500/30">
-            {user?.full_name ? `${user.full_name.split(" ")[0]} (Connected)` : "Supabase Connected"}
-          </Badge>
+        {mounted && (
+          isDemoMode ? (
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-lg bg-lime-electric text-charcoal-950 hover:bg-lime-electric/90 shadow-lime-sm transition-all"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              Sign In with Google
+            </Link>
+          ) : (
+            <Badge variant="secondary" className="text-[11px] text-emerald-400 border-emerald-500/30">
+              {user?.full_name ? `${user.full_name.split(" ")[0]} (Connected)` : "Supabase Connected"}
+            </Badge>
+          )
         )}
 
         <Link

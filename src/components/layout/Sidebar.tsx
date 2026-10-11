@@ -35,6 +35,11 @@ const NAV_ITEMS = [
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
   const { activeWorkout, user, isDemoMode } = useFitness();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <aside className="hidden lg:flex flex-col w-64 bg-charcoal-950 border-r border-white/5 h-screen sticky top-0 z-40 select-none">
@@ -124,7 +129,7 @@ export const Sidebar: React.FC = () => {
 
       {/* User Mini Profile */}
       <div className="p-4 border-t border-white/5 bg-charcoal-900/50 space-y-2">
-        {isDemoMode && (
+        {mounted && isDemoMode && (
           <Link
             href="/login"
             className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-lime-electric text-charcoal-950 font-black text-xs shadow-lime-sm hover:bg-lime-electric/90 transition-all"

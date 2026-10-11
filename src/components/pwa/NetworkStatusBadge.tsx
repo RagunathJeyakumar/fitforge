@@ -15,6 +15,13 @@ export const NetworkStatusBadge: React.FC<NetworkStatusBadgeProps> = ({
   showDetails = false,
 }) => {
   const { isOnline, syncStatus, pendingSyncCount, triggerManualSync } = usePwa();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
 
   if (isOnline && syncStatus === "synced" && pendingSyncCount === 0 && !showDetails) {
     return (
