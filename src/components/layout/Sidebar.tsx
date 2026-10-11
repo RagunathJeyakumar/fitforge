@@ -34,7 +34,7 @@ const NAV_ITEMS = [
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
-  const { activeWorkout, user, isDemoMode } = useFitness();
+  const { activeWorkout, user, isDemoMode, signInWithGoogle } = useFitness();
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
@@ -130,13 +130,13 @@ export const Sidebar: React.FC = () => {
       {/* User Mini Profile */}
       <div className="p-4 border-t border-white/5 bg-charcoal-900/50 space-y-2">
         {mounted && isDemoMode && (
-          <Link
-            href="/login"
-            className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-lime-electric text-charcoal-950 font-black text-xs shadow-lime-sm hover:bg-lime-electric/90 transition-all"
+          <button
+            onClick={signInWithGoogle}
+            className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-lime-electric text-charcoal-950 font-black text-xs shadow-lime-sm hover:bg-lime-electric/90 transition-all cursor-pointer"
           >
             <LogIn className="h-3.5 w-3.5" />
             Sign In with Google
-          </Link>
+          </button>
         )}
         <Link
           href="/settings"

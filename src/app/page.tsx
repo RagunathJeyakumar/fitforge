@@ -35,6 +35,7 @@ export default function DashboardPage() {
     activityFeed,
     isDemoMode,
     clearToBlankState,
+    signInWithGoogle,
   } = useFitness();
 
   // Calculate current week metrics
@@ -81,11 +82,13 @@ export default function DashboardPage() {
               >
                 Clear Mock Data
               </Button>
-              <Link href="/login">
-                <Button size="sm" className="h-8 text-xs font-black shadow-lime-sm">
-                  Sign In with Google
-                </Button>
-              </Link>
+              <Button
+                size="sm"
+                onClick={signInWithGoogle}
+                className="h-8 text-xs font-black shadow-lime-sm"
+              >
+                Sign In with Google
+              </Button>
             </div>
           </div>
         )}

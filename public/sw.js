@@ -11,7 +11,7 @@
  *   and sensitive authenticated responses to prevent cross-user data leakage.
  */
 
-const CACHE_VERSION = "fitforge-v1.0.0";
+const CACHE_VERSION = "fitforge-v1.0.1";
 const SHELL_CACHE = `fitforge-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `fitforge-static-${CACHE_VERSION}`;
 const FONTS_CACHE = `fitforge-fonts-${CACHE_VERSION}`;
@@ -31,6 +31,7 @@ const PRECACHE_ASSETS = [
 
 // Domains and URL patterns to NEVER cache (Strict Security & Multi-User Isolation)
 const NEVER_CACHE_PATTERNS = [
+  /\/login/i,               // Login page (always live from server)
   /\/auth\//i,              // Auth routes & callbacks
   /\/api\/auth/i,           // Auth API endpoints
   /supabase\.co/i,          // Supabase REST / Auth / Realtime API
@@ -129,10 +130,12 @@ self.addEventListener("fetch", (event) => {
             return offlineFallback;
           }
 
-          // Fallback to cached root
-          const rootCached = await caches.match("/");
-          if (rootCached) {
-            return rootCached;
+          // Fallback to cached root only if navigating to root path "/"
+          if (url.pathname === "/") {
+            const rootCached = await caches.match("/");
+            if (rootCached) {
+              return rootCached;
+            }
           }
 
           return new Response("Offline - Connect to internet to load this page", {

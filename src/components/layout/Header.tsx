@@ -17,6 +17,7 @@ export const Header: React.FC = () => {
     isDemoMode,
     isSupabaseConfigured,
     user,
+    signInWithGoogle,
   } = useFitness();
 
   const {
@@ -102,13 +103,13 @@ export const Header: React.FC = () => {
 
         {mounted && (
           isDemoMode ? (
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-lg bg-lime-electric text-charcoal-950 hover:bg-lime-electric/90 shadow-lime-sm transition-all"
+            <button
+              onClick={signInWithGoogle}
+              className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-lg bg-lime-electric text-charcoal-950 hover:bg-lime-electric/90 shadow-lime-sm transition-all cursor-pointer"
             >
               <LogIn className="h-3.5 w-3.5" />
               Sign In with Google
-            </Link>
+            </button>
           ) : (
             <Badge variant="secondary" className="text-[11px] text-emerald-400 border-emerald-500/30">
               {user?.full_name ? `${user.full_name.split(" ")[0]} (Connected)` : "Supabase Connected"}
