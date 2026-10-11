@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Zap, Timer, Play, Pause, Plus, Sparkles, Download, Smartphone } from "lucide-react";
+import { Zap, Timer, Play, Pause, Plus, Sparkles, Download, Smartphone, LogIn } from "lucide-react";
 import { useFitness } from "@/lib/store/fitnessStore";
 import { usePwa } from "@/lib/pwa/PwaProvider";
 import { formatDuration } from "@/lib/utils";
@@ -16,6 +16,7 @@ export const Header: React.FC = () => {
     adjustRestTimer,
     isDemoMode,
     isSupabaseConfigured,
+    user,
   } = useFitness();
 
   const {
@@ -93,18 +94,17 @@ export const Header: React.FC = () => {
           </button>
         )}
 
-        {isDemoMode && (
-          <Link href="/settings" title="Running in Interactive Demo Mode">
-            <Badge variant="default" className="cursor-pointer gap-1 text-[11px] hover:bg-lime-electric/25">
-              <Sparkles className="h-3 w-3" />
-              Demo Mode
-            </Badge>
+        {isDemoMode ? (
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-lg bg-lime-electric text-charcoal-950 hover:bg-lime-electric/90 shadow-lime-sm transition-all"
+          >
+            <LogIn className="h-3.5 w-3.5" />
+            Sign In with Google
           </Link>
-        )}
-
-        {!isDemoMode && isSupabaseConfigured && (
+        ) : (
           <Badge variant="secondary" className="text-[11px] text-emerald-400 border-emerald-500/30">
-            Supabase Connected
+            {user?.full_name ? `${user.full_name.split(" ")[0]} (Connected)` : "Supabase Connected"}
           </Badge>
         )}
 

@@ -15,6 +15,7 @@ import {
   Flame,
   Zap,
   UtensilsCrossed,
+  LogIn,
 } from "lucide-react";
 import { useFitness } from "@/lib/store/fitnessStore";
 import { cn } from "@/lib/utils";
@@ -33,7 +34,7 @@ const NAV_ITEMS = [
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
-  const { activeWorkout, user } = useFitness();
+  const { activeWorkout, user, isDemoMode } = useFitness();
 
   return (
     <aside className="hidden lg:flex flex-col w-64 bg-charcoal-950 border-r border-white/5 h-screen sticky top-0 z-40 select-none">
@@ -122,7 +123,16 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       {/* User Mini Profile */}
-      <div className="p-4 border-t border-white/5 bg-charcoal-900/50">
+      <div className="p-4 border-t border-white/5 bg-charcoal-900/50 space-y-2">
+        {isDemoMode && (
+          <Link
+            href="/login"
+            className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-lime-electric text-charcoal-950 font-black text-xs shadow-lime-sm hover:bg-lime-electric/90 transition-all"
+          >
+            <LogIn className="h-3.5 w-3.5" />
+            Sign In with Google
+          </Link>
+        )}
         <Link
           href="/settings"
           className="flex items-center gap-3 p-2 rounded-xl hover:bg-charcoal-800 transition-colors"

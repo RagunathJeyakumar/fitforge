@@ -52,6 +52,8 @@ interface FitnessContextType {
   updateProfile: (profile: Partial<UserProfile>) => void;
   updatePrivacySettings: (settings: Partial<UserPrivacySettings>) => void;
   toggleDemoMode: (enable: boolean) => void;
+  signInWithGoogle: () => Promise<void>;
+  clearToBlankState: () => void;
   logout: () => Promise<void>;
 
   // Exercises
@@ -135,6 +137,7 @@ const STORAGE_KEYS = {
   CHALLENGES: "fitforge_challenges_v2",
   LOGGED_MEALS: "fitforge_logged_meals_v2",
   NUTRITION_TARGETS: "fitforge_nutrition_targets_v2",
+  PRS: "fitforge_prs_v2",
 };
 
 const DEFAULT_NUTRITION_TARGETS: NutritionDailyTargets = {
@@ -351,34 +354,54 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setWorkoutPlans([...DEFAULT_WORKOUT_TEMPLATES, ...parsed]);
       }
 
-      const savedSessions = localStorage.getItem(STORAGE_KEYS.SESSIONS);
-      if (savedSessions) {
-        setCompletedSessions(JSON.parse(savedSessions));
-      }
+      if (savedDemo === "false") {
+        setIsDemoMode(false);
+        const savedSessions = localStorage.getItem(STORAGE_KEYS.SESSIONS);
+        setCompletedSessions(savedSessions ? JSON.parse(savedSessions) : []);
 
-      const savedMetrics = localStorage.getItem(STORAGE_KEYS.METRICS);
-      if (savedMetrics) {
-        setBodyMetrics(JSON.parse(savedMetrics));
-      }
+        const savedMetrics = localStorage.getItem(STORAGE_KEYS.METRICS);
+        setBodyMetrics(savedMetrics ? JSON.parse(savedMetrics) : []);
 
-      const savedActiveWorkout = localStorage.getItem(STORAGE_KEYS.ACTIVE_WORKOUT);
-      if (savedActiveWorkout) {
-        setActiveWorkout(JSON.parse(savedActiveWorkout));
-      }
+        const savedMeals = localStorage.getItem(STORAGE_KEYS.LOGGED_MEALS);
+        setLoggedMeals(savedMeals ? JSON.parse(savedMeals) : []);
 
-      const savedPrivacy = localStorage.getItem(STORAGE_KEYS.PRIVACY);
-      if (savedPrivacy) {
-        setPrivacySettings(JSON.parse(savedPrivacy));
-      }
+        const savedPRs = localStorage.getItem(STORAGE_KEYS.PRS);
+        setPersonalRecords(savedPRs ? JSON.parse(savedPRs) : []);
 
-      const savedGroups = localStorage.getItem(STORAGE_KEYS.GROUPS);
-      if (savedGroups) {
-        setGroups(JSON.parse(savedGroups));
-      }
+        const savedGroups = localStorage.getItem(STORAGE_KEYS.GROUPS);
+        if (savedGroups) {
+          setGroups(JSON.parse(savedGroups));
+        } else {
+          setGroups([]);
+          setGroupMembers([]);
+          setChallenges([]);
+          setActivityFeed([]);
+        }
+      } else {
+        const savedSessions = localStorage.getItem(STORAGE_KEYS.SESSIONS);
+        if (savedSessions) {
+          setCompletedSessions(JSON.parse(savedSessions));
+        }
 
-      const savedMeals = localStorage.getItem(STORAGE_KEYS.LOGGED_MEALS);
-      if (savedMeals) {
-        setLoggedMeals(JSON.parse(savedMeals));
+        const savedMetrics = localStorage.getItem(STORAGE_KEYS.METRICS);
+        if (savedMetrics) {
+          setBodyMetrics(JSON.parse(savedMetrics));
+        }
+
+        const savedMeals = localStorage.getItem(STORAGE_KEYS.LOGGED_MEALS);
+        if (savedMeals) {
+          setLoggedMeals(JSON.parse(savedMeals));
+        }
+
+        const savedPRs = localStorage.getItem(STORAGE_KEYS.PRS);
+        if (savedPRs) {
+          setPersonalRecords(JSON.parse(savedPRs));
+        }
+
+        const savedGroups = localStorage.getItem(STORAGE_KEYS.GROUPS);
+        if (savedGroups) {
+          setGroups(JSON.parse(savedGroups));
+        }
       }
 
       const savedTargets = localStorage.getItem(STORAGE_KEYS.NUTRITION_TARGETS);
@@ -389,6 +412,123 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.warn("Could not read local storage state:", e);
     }
   }, []);
+
+  // Supabase Auth Listener & Cloud Data Hydration
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    try {
+      const supabase = getSupabaseBrowserClient();
+
+      const hydrateAuthUser = async (authUser: any) => {
+        setIsDemoMode(false);
+        localStorage.setItem(STORAGE_KEYS.IS_DEMO, "false");
+
+        const profile: UserProfile = {
+          id: authUser.id,
+          email: authUser.email || "",
+          full_name:
+            authUser.user_metadata?.full_name ||
+            authUser.user_metadata?.name ||
+            authUser.email?.split("@")[0] ||
+            "Athlete",
+          avatar_url:
+            authUser.user_metadata?.avatar_url ||
+            authUser.user_metadata?.picture,
+          fitness_goal: "hypertrophy",
+          experience_level: "intermediate",
+          weight_unit: "kg",
+          target_days_per_week: 4,
+          created_at: authUser.created_at || new Date().toISOString(),
+        };
+
+        setUser(profile);
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(profile));
+
+        // Hydrate from Supabase cloud database
+        try {
+          const { data: sessions } = await supabase
+            .from("workout_sessions")
+            .select("*, sets:workout_sets(*)")
+            .eq("user_id", authUser.id)
+            .order("created_at", { ascending: false });
+
+          if (sessions && sessions.length > 0) {
+            setCompletedSessions(sessions);
+            localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(sessions));
+          } else {
+            // Brand new account: start clean with 0 sessions
+            setCompletedSessions([]);
+            localStorage.removeItem(STORAGE_KEYS.SESSIONS);
+          }
+
+          const { data: prs } = await supabase
+            .from("personal_records")
+            .select("*")
+            .eq("user_id", authUser.id);
+          if (prs && prs.length > 0) {
+            setPersonalRecords(prs);
+          } else {
+            setPersonalRecords([]);
+          }
+
+          const { data: metrics } = await supabase
+            .from("body_metrics")
+            .select("*")
+            .eq("user_id", authUser.id)
+            .order("recorded_date", { ascending: false });
+          if (metrics && metrics.length > 0) {
+            setBodyMetrics(metrics);
+          } else {
+            setBodyMetrics([]);
+          }
+
+          const { data: meals } = await supabase
+            .from("diet_logs")
+            .select("*")
+            .eq("user_id", authUser.id)
+            .order("logged_at", { ascending: false });
+          if (meals && meals.length > 0) {
+            setLoggedMeals(meals);
+          } else {
+            setLoggedMeals([]);
+          }
+        } catch (dbErr) {
+          console.warn("Could not load cloud tables:", dbErr);
+        }
+      };
+
+      // 1. Check existing session on load
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          hydrateAuthUser(session.user);
+        }
+      });
+
+      // 2. Listen for auth changes (sign in, sign out, callback)
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === "SIGNED_IN" && session?.user) {
+          hydrateAuthUser(session.user);
+        } else if (event === "SIGNED_OUT") {
+          setUser(null);
+          setIsDemoMode(false);
+          setCompletedSessions([]);
+          setPersonalRecords([]);
+          setBodyMetrics([]);
+          setGroups([]);
+          setLoggedMeals([]);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    } catch (authErr) {
+      console.warn("Supabase auth listener initialization error:", authErr);
+    }
+  }, [isSupabaseConfigured]);
 
   // Save active workout to localStorage on change
   useEffect(() => {
@@ -894,6 +1034,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     setPersonalRecords(updatedPRs);
+    localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify(updatedPRs));
 
     setCompletedSessions((prev) => {
       const updated = [finishedSession, ...prev];
@@ -979,6 +1120,50 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [user]);
 
+  const signInWithGoogle = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      window.location.href = "/login";
+      return;
+    }
+    const supabase = getSupabaseBrowserClient();
+    const origin = window.location.origin;
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${origin}/api/auth/callback`,
+      },
+    });
+  }, [isSupabaseConfigured]);
+
+  const clearToBlankState = useCallback(() => {
+    setIsDemoMode(false);
+    setUser({
+      id: `local-user-${Date.now()}`,
+      email: "athlete@fitforge.app",
+      full_name: "Athlete",
+      fitness_goal: "hypertrophy",
+      experience_level: "intermediate",
+      weight_unit: "kg",
+      target_days_per_week: 4,
+      created_at: new Date().toISOString(),
+    });
+    setCompletedSessions([]);
+    setPersonalRecords([]);
+    setBodyMetrics([]);
+    setGroups([]);
+    setGroupMembers([]);
+    setChallenges([]);
+    setActivityFeed([]);
+    setLoggedMeals([]);
+    localStorage.setItem(STORAGE_KEYS.IS_DEMO, "false");
+    localStorage.removeItem(STORAGE_KEYS.SESSIONS);
+    localStorage.removeItem(STORAGE_KEYS.LOGGED_MEALS);
+    localStorage.removeItem(STORAGE_KEYS.METRICS);
+    localStorage.removeItem(STORAGE_KEYS.PRS);
+    localStorage.removeItem(STORAGE_KEYS.FAVORITES);
+    localStorage.removeItem(STORAGE_KEYS.GROUPS);
+  }, []);
+
   const logout = useCallback(async () => {
     if (isSupabaseConfigured) {
       try {
@@ -994,7 +1179,13 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setUser(null);
     setIsDemoMode(false);
+    setCompletedSessions([]);
+    setPersonalRecords([]);
+    setBodyMetrics([]);
+    setLoggedMeals([]);
     localStorage.removeItem(STORAGE_KEYS.USER);
+    localStorage.removeItem(STORAGE_KEYS.SESSIONS);
+    localStorage.removeItem(STORAGE_KEYS.LOGGED_MEALS);
     localStorage.setItem(STORAGE_KEYS.IS_DEMO, "false");
   }, [isSupabaseConfigured, user?.id]);
 
@@ -1203,6 +1394,8 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         updateProfile,
         updatePrivacySettings,
         toggleDemoMode,
+        signInWithGoogle,
+        clearToBlankState,
         logout,
 
         exercises,

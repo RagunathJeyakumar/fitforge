@@ -33,6 +33,8 @@ export default function DashboardPage() {
     personalRecords,
     challenges,
     activityFeed,
+    isDemoMode,
+    clearToBlankState,
   } = useFitness();
 
   // Calculate current week metrics
@@ -41,7 +43,7 @@ export default function DashboardPage() {
     .reduce((acc, s) => acc + s.total_volume_kg, 0);
 
   const workoutsThisWeekCount = completedSessions.length;
-  const currentStreakWeeks = 4; // Consistency streak
+  const currentStreakWeeks = isDemoMode ? 4 : Math.min(1, completedSessions.length);
 
   // Next recommended workout routine
   const recommendedPlan = workoutPlans[0];
@@ -49,6 +51,40 @@ export default function DashboardPage() {
   return (
     <AppShell>
       <div className="space-y-8 animate-in fade-in duration-300">
+        {/* Demo Mode Notice & Action Banner */}
+        {isDemoMode && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-charcoal-900 border border-lime-electric/30 shadow-lg animate-in slide-in-from-top">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-lime-electric/20 border border-lime-electric/40 flex items-center justify-center text-lime-electric shrink-0">
+                <Sparkles className="h-4 w-4 fill-lime-electric" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-white">
+                  Previewing Interactive Demo Data (Sample Athlete)
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Sign in with Google to sync your own personal workouts to Supabase, or clear to a clean slate.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={clearToBlankState}
+                className="h-8 text-xs border-white/10 hover:border-white/20 text-white"
+              >
+                Clear Mock Data
+              </Button>
+              <Link href="/login">
+                <Button size="sm" className="h-8 text-xs font-black shadow-lime-sm">
+                  Sign In with Google
+                </Button>
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* Welcome & Streak Banner */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-charcoal-900 via-charcoal-900 to-charcoal-850 border border-white/5 relative overflow-hidden shadow-2xl">
           {/* Subtle electric-lime glow accent */}
