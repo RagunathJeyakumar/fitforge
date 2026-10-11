@@ -71,6 +71,7 @@ export const PwaProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deferredPromptRef = useRef<BeforeInstallPromptEvent | null>(null);
   const waitingWorkerRef = useRef<ServiceWorker | null>(null);
+  const isUpdatingRef = useRef<boolean>(false);
 
   // 1. Check if application is already running in Standalone PWA mode
   const checkInstalled = useCallback(() => {
@@ -252,10 +253,10 @@ export const PwaProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn("[PWA] Service worker registration failed:", err);
       });
 
-    // Listen for controllerchange
+    // Listen for controllerchange: Only reload if explicitly triggered by user applyUpdate
     let refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (!refreshing) {
+      if (isUpdatingRef.current && !refreshing) {
         refreshing = true;
         window.location.reload();
       }
@@ -315,6 +316,7 @@ export const PwaProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!confirmUpdate) return;
     }
 
+    isUpdatingRef.current = true;
     if (waitingWorkerRef.current) {
       waitingWorkerRef.current.postMessage({ type: "SKIP_WAITING" });
     } else if (navigator.serviceWorker.controller) {
