@@ -18,6 +18,19 @@ export default function LoginPage() {
   const [emailSent, setEmailSent] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const desc = hash.get("error_description") || params.get("error_description");
+    const err = params.get("error") || hash.get("error");
+    if (desc) {
+      setErrorMsg(decodeURIComponent(desc).replace(/\+/g, " "));
+    } else if (err) {
+      setErrorMsg("Authentication failed. Please verify your Supabase and Google OAuth settings.");
+    }
+  }, []);
+
   const handleGoogleSignIn = async () => {
     if (!isSupabaseConfigured) {
       setErrorMsg(
