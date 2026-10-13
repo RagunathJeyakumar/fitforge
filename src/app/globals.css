@@ -108,12 +108,44 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* PWA Safe-Area Spacing for Notches and Home Indicator Bars */
+/* PWA & Mobile Safe-Area Spacing for Notches, Dynamic Island, and Home Indicator Bars */
 :root {
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
+}
+
+@layer utilities {
+  /* Mobile Safe Area Top (Avoids Dynamic Island & Camera Cutouts on iOS / Android) */
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top, 0px), 12px);
+  }
+  .pt-safe-lg {
+    padding-top: max(env(safe-area-inset-top, 0px), 16px);
+  }
+  .pt-safe-inset {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Mobile Safe Area Bottom (Avoids iPhone swipe home bar & Android navigation pill) */
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
+  }
+  .pb-safe-lg {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 20px);
+  }
+  .pb-safe-inset {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Safe Area Horizontal */
+  .pl-safe {
+    padding-left: max(env(safe-area-inset-left, 0px), 16px);
+  }
+  .pr-safe {
+    padding-right: max(env(safe-area-inset-right, 0px), 16px);
+  }
 }
 
 body {
