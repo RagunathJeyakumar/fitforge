@@ -70,6 +70,11 @@ export default function LoginPage() {
         provider: "google",
         options: {
           redirectTo: `${origin}/api/auth/callback`,
+          scopes: "email profile openid",
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
       });
 
