@@ -675,6 +675,85 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
           } else {
             setLoggedMeals([]);
           }
+
+          // Build real live activities from Supabase cloud sessions and meals
+          const realCloudActivities: ActivityFeedItem[] = [];
+
+          const formatTimeAgo = (dateStr: string) => {
+            try {
+              const diffMs = Date.now() - new Date(dateStr).getTime();
+              const mins = Math.floor(diffMs / 60000);
+              if (mins < 2) return "Just now";
+              if (mins < 60) return `${mins}m ago`;
+              const hours = Math.floor(mins / 60);
+              if (hours < 24) return `${hours}h ago`;
+              const days = Math.floor(hours / 24);
+              if (days === 1) return "Yesterday";
+              return `${days}d ago`;
+            } catch {
+              return "Recently";
+            }
+          };
+
+          if (sessions && sessions.length > 0) {
+            sessions.slice(0, 10).forEach((s: any) => {
+              realCloudActivities.push({
+                id: `cloud-sess-${s.id}`,
+                user_id: s.user_id,
+                user_name: s.user_id === authUser.id ? (profile.full_name || "You") : "Squad Lifter",
+                user_avatar: s.user_id === authUser.id ? profile.avatar_url : undefined,
+                action_type: (s.pr_count && s.pr_count > 0) ? "pr_broken" : "workout_completed",
+                workout_name: s.name,
+                volume_kg: Math.round(s.total_volume_kg || 0),
+                pr_detail: (s.pr_count && s.pr_count > 0) ? `Broke ${s.pr_count} personal records! 🔥` : undefined,
+                timestamp: formatTimeAgo(s.created_at || s.start_time),
+                cheers_count: 0,
+                has_cheered: false,
+                is_real: true,
+              });
+            });
+          }
+
+          if (meals && meals.length > 0) {
+            meals.slice(0, 10).forEach((m: any) => {
+              let badge = `🥗 Clean Fuel • ${m.calories} kcal`;
+              if (m.protein_g >= 35) badge = `🍗 ${m.protein_g}g High-Protein Muscle Fuel 🔥`;
+              else if (m.protein_g >= 20) badge = `💪 ${m.protein_g}g Lean Protein Power`;
+              else if (m.tamil_name) badge = `🌿 Tamil Nadu Power Fuel`;
+
+              realCloudActivities.push({
+                id: `cloud-meal-${m.id}`,
+                user_id: m.user_id,
+                user_name: m.user_id === authUser.id ? (profile.full_name || "You") : "Squad Lifter",
+                user_avatar: m.user_id === authUser.id ? profile.avatar_url : undefined,
+                action_type: "meal_logged",
+                meal_type: m.meal_type,
+                food_name: m.food_name,
+                tamil_name: m.tamil_name,
+                calories: m.calories,
+                protein_g: m.protein_g,
+                carbs_g: m.carbs_g,
+                fat_g: m.healthy_fat_g,
+                motivation_badge: badge,
+                timestamp: formatTimeAgo(m.logged_at || m.created_at),
+                cheers_count: 0,
+                has_cheered: false,
+                is_real: true,
+              });
+            });
+          }
+
+          // Real activities take top priority; keep demo items only if fewer than 4 real posts exist
+          if (realCloudActivities.length > 0) {
+            const localOnlyReal = activeFeed.filter(
+              (item) => item.is_real && !realCloudActivities.some((r) => r.id === item.id)
+            );
+            const allReal = [...localOnlyReal, ...realCloudActivities];
+            const fillerDemo = allReal.length < 4 ? DEMO_ACTIVITY_FEED.slice(0, 4 - allReal.length) : [];
+            const merged = [...allReal, ...fillerDemo];
+            setActivityFeed(merged);
+            localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(merged));
+          }
         } catch (dbErr) {
           console.warn("Could not load cloud tables:", dbErr);
         }
@@ -1240,6 +1319,29 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Queue session completion to IndexedDB for offline sync
     queueOfflineSessionCompletion(user?.id || "user-marcus", finishedSession);
 
+    // Save to Supabase cloud database
+    if (isSupabaseConfigured && user?.id && !isDemoMode) {
+      try {
+        const supabase = getSupabaseBrowserClient();
+        supabase
+          .from("workout_sessions")
+          .insert({
+            user_id: user.id,
+            name: finishedSession.name,
+            duration_seconds: finishedSession.duration_seconds,
+            total_volume_kg: finishedSession.total_volume_kg,
+            status: "completed",
+            pr_count: newPRsCount,
+            created_at: finishedSession.end_time || new Date().toISOString(),
+          })
+          .then(({ error }: any) => {
+            if (error) console.warn("Supabase workout session insert warning:", error);
+          });
+      } catch (err) {
+        console.warn("Could not insert workout to Supabase:", err);
+      }
+    }
+
     // Add activity feed item
     const feedItem: ActivityFeedItem = {
       id: `act-${Date.now()}`,
@@ -1252,6 +1354,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       pr_detail: newPRsCount > 0 ? `Broke ${newPRsCount} personal records! 🔥` : undefined,
       cheers_count: 0,
       has_cheered: false,
+      is_real: true,
       timestamp: "Just now",
     };
     setActivityFeed((prev) => {
@@ -1720,6 +1823,33 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return updated;
       });
 
+      // Save to Supabase cloud database
+      if (isSupabaseConfigured && user?.id && !isDemoMode) {
+        try {
+          const supabase = getSupabaseBrowserClient();
+          supabase
+            .from("diet_logs")
+            .insert({
+              user_id: user.id,
+              meal_type: newEntry.meal_type,
+              food_name: newEntry.food_name,
+              tamil_name: newEntry.tamil_name || null,
+              servings: newEntry.servings,
+              serving_unit: newEntry.serving_unit,
+              calories: newEntry.calories,
+              protein_g: newEntry.protein_g,
+              carbs_g: newEntry.carbs_g,
+              healthy_fat_g: newEntry.healthy_fat_g,
+              logged_at: newEntry.logged_at,
+            })
+            .then(({ error }: any) => {
+              if (error) console.warn("Supabase diet log insert warning:", error);
+            });
+        } catch (err) {
+          console.warn("Could not insert meal to Supabase:", err);
+        }
+      }
+
       // Automatically publish to friends activity feed with motivational badges and macros
       const totalProtein = Number((foodItem.protein_g * s).toFixed(1));
       const totalCalories = Math.round(foodItem.calories * s);
@@ -1755,6 +1885,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         motivation_badge: motivationBadge,
         cheers_count: 0,
         has_cheered: false,
+        is_real: true,
         timestamp: "Just now",
       };
 

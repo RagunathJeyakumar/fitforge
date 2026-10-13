@@ -478,12 +478,18 @@ export default function SocialPage() {
         <div className="space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-purple-400" />
-                Friends Activity & Fuel Feed
-              </h2>
+              <div className="flex items-center gap-2 mb-0.5">
+                <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-400" />
+                  Friends Activity & Fuel Feed
+                </h2>
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1.5 shrink-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Cloud Sync Active
+                </span>
+              </div>
               <p className="text-xs sm:text-sm text-muted-foreground">
-                Live motivational stream of teammate meals, macros, workouts, and PR breakthroughs.
+                Live stream of teammate meals, macros, workouts, and PR breakthroughs synced across your squad.
               </p>
             </div>
 
@@ -567,13 +573,25 @@ export default function SocialPage() {
                         </div>
                       </div>
 
-                      <Badge
-                        variant="cyan"
-                        className="text-[10px] uppercase font-bold tracking-wider py-0.5 px-2.5 flex items-center gap-1"
-                      >
-                        <Utensils className="h-2.5 w-2.5" />
-                        {item.meal_type?.replace("_", " ") || "Fuel Meal"}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {item.is_real ? (
+                          <span className="text-[10px] font-bold text-lime-electric bg-lime-electric/15 border border-lime-electric/30 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-[0_0_8px_rgba(204,255,0,0.12)]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-lime-electric animate-pulse" />
+                            Live
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold text-muted-foreground/75 bg-charcoal-950/70 border border-white/5 px-2 py-0.5 rounded-full">
+                            Featured
+                          </span>
+                        )}
+                        <Badge
+                          variant="cyan"
+                          className="text-[10px] uppercase font-bold tracking-wider py-0.5 px-2.5 flex items-center gap-1"
+                        >
+                          <Utensils className="h-2.5 w-2.5" />
+                          {item.meal_type?.replace("_", " ") || "Fuel Meal"}
+                        </Badge>
+                      </div>
                     </div>
 
                     {/* Food Name & Tamil Script Badge */}
@@ -702,27 +720,39 @@ export default function SocialPage() {
                         </div>
                       </div>
 
-                      <Badge
-                        variant={isPR ? "gold" : isJoined ? "purple" : "cyan"}
-                        className="text-[10px] uppercase font-bold tracking-wider py-0.5 px-2.5 flex items-center gap-1"
-                      >
-                        {isPR ? (
-                          <>
-                            <Trophy className="h-2.5 w-2.5" />
-                            New PR
-                          </>
-                        ) : isJoined ? (
-                          <>
-                            <Sparkles className="h-2.5 w-2.5" />
-                            Squad Join
-                          </>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {item.is_real ? (
+                          <span className="text-[10px] font-bold text-lime-electric bg-lime-electric/15 border border-lime-electric/30 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-[0_0_8px_rgba(204,255,0,0.12)]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-lime-electric animate-pulse" />
+                            Live
+                          </span>
                         ) : (
-                          <>
-                            <Dumbbell className="h-2.5 w-2.5" />
-                            Workout
-                          </>
+                          <span className="text-[10px] font-semibold text-muted-foreground/75 bg-charcoal-950/70 border border-white/5 px-2 py-0.5 rounded-full">
+                            Featured
+                          </span>
                         )}
-                      </Badge>
+                        <Badge
+                          variant={isPR ? "gold" : isJoined ? "purple" : "cyan"}
+                          className="text-[10px] uppercase font-bold tracking-wider py-0.5 px-2.5 flex items-center gap-1"
+                        >
+                          {isPR ? (
+                            <>
+                              <Trophy className="h-2.5 w-2.5" />
+                              New PR
+                            </>
+                          ) : isJoined ? (
+                            <>
+                              <Sparkles className="h-2.5 w-2.5" />
+                              Squad Join
+                            </>
+                          ) : (
+                            <>
+                              <Dumbbell className="h-2.5 w-2.5" />
+                              Workout
+                            </>
+                          )}
+                        </Badge>
+                      </div>
                     </div>
 
                     {/* Workout Details */}
