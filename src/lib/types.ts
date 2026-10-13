@@ -213,11 +213,24 @@ export interface ActivityFeedItem {
   user_id: string;
   user_name: string;
   user_avatar?: string;
-  action_type: "workout_completed" | "pr_broken" | "joined_group" | "challenge_completed";
+  action_type: "workout_completed" | "pr_broken" | "joined_group" | "challenge_completed" | "meal_logged";
   workout_name?: string;
   volume_kg?: number;
   pr_detail?: string;
   timestamp: string;
+  // Food & Nutrition details (Motivational fuel feed)
+  meal_type?: MealType;
+  food_name?: string;
+  tamil_name?: string;
+  servings?: number;
+  serving_unit?: string;
+  calories?: number;
+  protein_g?: number;
+  carbs_g?: number;
+  fat_g?: number;
+  motivation_badge?: string;
+  cheers_count?: number;
+  has_cheered?: boolean;
 }
 
 // =================== DIET & NUTRITION TYPES ===================

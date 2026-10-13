@@ -33,6 +33,7 @@ export default function DashboardPage() {
     personalRecords,
     challenges,
     activityFeed,
+    cheerActivity,
     isDemoMode,
     clearToBlankState,
     signInWithGoogle,
@@ -395,33 +396,105 @@ export default function DashboardPage() {
 
             {/* Squad Feed Spotlight */}
             <Card className="p-6 border-white/5 bg-charcoal-900">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-1.5 mb-3">
-                <Sparkles className="h-4 w-4 text-purple-400" />
-                Friends Activity
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-purple-400" />
+                  Friends Activity & Fuel
+                </h3>
+                <Link href="/social" className="text-[11px] text-lime-electric hover:underline font-semibold">
+                  View Feed
+                </Link>
+              </div>
 
               <div className="space-y-3">
-                {activityFeed.slice(0, 3).map((item) => (
-                  <div key={item.id} className="flex items-start gap-3 text-xs">
-                    <div className="h-7 w-7 rounded-full bg-charcoal-800 border border-white/10 flex items-center justify-center font-bold text-lime-electric shrink-0 mt-0.5 overflow-hidden">
-                      {item.user_avatar ? (
-                        <img src={item.user_avatar} alt={item.user_name} className="h-full w-full object-cover" />
+                {activityFeed.slice(0, 4).map((item) => {
+                  const isFood = item.action_type === "meal_logged";
+                  const isPR = item.action_type === "pr_broken";
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3 rounded-2xl bg-charcoal-950/60 border border-white/5 hover:border-white/10 transition-all space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="h-7 w-7 rounded-full bg-charcoal-800 border border-white/10 flex items-center justify-center font-bold text-lime-electric shrink-0 overflow-hidden text-xs">
+                            {item.user_avatar ? (
+                              <img src={item.user_avatar} alt={item.user_name} className="h-full w-full object-cover" />
+                            ) : (
+                              item.user_name.charAt(0)
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs text-foreground font-bold text-white leading-tight">
+                              {item.user_name}
+                            </p>
+                            <span className="text-[10px] text-muted-foreground font-mono">{item.timestamp}</span>
+                          </div>
+                        </div>
+
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-charcoal-900 border border-white/10 text-muted-foreground">
+                          {isFood ? "🥗 Fuel" : isPR ? "🏆 PR" : "⚡ Lift"}
+                        </span>
+                      </div>
+
+                      {isFood ? (
+                        <div className="text-xs space-y-1">
+                          <p className="font-semibold text-white leading-snug">
+                            {item.food_name}
+                            {item.tamil_name && (
+                              <span className="text-[10px] text-amber-300 ml-1.5 font-normal">
+                                ({item.tamil_name})
+                              </span>
+                            )}
+                          </p>
+                          <div className="flex items-center gap-2 text-[11px] font-mono">
+                            <span className="text-lime-electric font-bold">{item.protein_g}g Protein</span>
+                            <span className="text-muted-foreground">•</span>
+                            <span className="text-amber-300">{item.calories} kcal</span>
+                          </div>
+                        </div>
                       ) : (
-                        item.user_name.charAt(0)
+                        <div className="text-xs space-y-0.5">
+                          <p className="font-semibold text-white">
+                            {isPR ? "Broke PR on " : "Completed "}
+                            <span className="text-lime-electric">{item.workout_name}</span>
+                          </p>
+                          {item.volume_kg && (
+                            <p className="text-[10px] text-muted-foreground font-mono">
+                              Volume: {item.volume_kg.toLocaleString()} kg
+                            </p>
+                          )}
+                        </div>
                       )}
+
+                      <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
+                        <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">
+                          {isFood ? (item.motivation_badge || "Clean fuel") : "Consistency"}
+                        </span>
+                        <button
+                          onClick={() => cheerActivity(item.id)}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${
+                            item.has_cheered
+                              ? "bg-lime-electric/20 text-lime-electric border border-lime-electric"
+                              : "bg-charcoal-800 text-muted-foreground hover:text-white"
+                          }`}
+                        >
+                          <Flame className="h-3 w-3 text-amber-400" />
+                          <span>{item.has_cheered ? "Hyped" : "Hype"} ({item.cheers_count || 0})</span>
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-foreground">
-                        <span className="font-bold text-white">{item.user_name}</span>{" "}
-                        {item.action_type === "pr_broken" ? "set a new PR on" : "completed"}
-                        {" "}
-                        <span className="text-lime-electric font-semibold">{item.workout_name}</span>
-                      </p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{item.timestamp}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+
+              <Link href="/social" className="block mt-3">
+                <Button variant="ghost" size="sm" className="w-full text-xs text-lime-electric hover:bg-lime-electric/10">
+                  Open Social Hub & Full Feed
+                  <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                </Button>
+              </Link>
             </Card>
           </div>
         </div>
