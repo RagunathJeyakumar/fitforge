@@ -32,9 +32,9 @@ export default function LoginPage() {
     // If URL hash contains access_token, user is authenticated via Magic Link!
     if (window.location.hash.includes("access_token")) {
       setLoading(true);
-      setErrorMsg("");
       const supabase = getSupabaseBrowserClient();
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      supabase.auth.getSession().then((res: any) => {
+        const session = res?.data?.session;
         if (session?.user) {
           router.push("/");
         }

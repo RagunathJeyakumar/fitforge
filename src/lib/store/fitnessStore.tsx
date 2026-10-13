@@ -282,8 +282,26 @@ const getInitialDemoMeals = (): LoggedMealEntry[] => {
 export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isConfigured } = getSupabaseConfig();
   const [isSupabaseConfigured] = useState(isConfigured);
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(true);
-  const [user, setUser] = useState<UserProfile | null>(DEMO_CURRENT_USER);
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(STORAGE_KEYS.IS_DEMO);
+      if (saved !== null) return saved === "true";
+    }
+    return true;
+  });
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    if (typeof window !== "undefined") {
+      const savedUser = localStorage.getItem(STORAGE_KEYS.USER);
+      if (savedUser) {
+        try {
+          return JSON.parse(savedUser);
+        } catch {}
+      }
+      const isDemo = localStorage.getItem(STORAGE_KEYS.IS_DEMO);
+      if (isDemo === "false") return null;
+    }
+    return DEMO_CURRENT_USER;
+  });
   const [privacySettings, setPrivacySettings] = useState<UserPrivacySettings>({
     user_id: DEMO_CURRENT_USER.id,
     share_workouts: true,
@@ -445,6 +463,13 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setUser(profile);
         localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(profile));
 
+        // For real users, clear mock demo groups and syndicate data
+        setGroups([]);
+        setGroupMembers([]);
+        setChallenges([]);
+        setActivityFeed([]);
+        localStorage.removeItem(STORAGE_KEYS.GROUPS);
+
         // Hydrate from Supabase cloud database
         try {
           const { data: sessions } = await supabase
@@ -498,18 +523,26 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       };
 
-      // 1. Check existing session on load
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user) {
-          hydrateAuthUser(session.user);
+      // 1. Check existing user session on load (using getUser from @supabase/ssr)
+      supabase.auth.getUser().then((res: any) => {
+        const authUser = res?.data?.user;
+        if (authUser) {
+          hydrateAuthUser(authUser);
+        } else {
+          supabase.auth.getSession().then((sessionRes: any) => {
+            const session = sessionRes?.data?.session;
+            if (session?.user) {
+              hydrateAuthUser(session.user);
+            }
+          });
         }
       });
 
-      // 2. Listen for auth changes (sign in, sign out, callback)
+      // 2. Listen for auth changes (sign in, initial session, sign out, callback)
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === "SIGNED_IN" && session?.user) {
+      } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
+        if (session?.user && (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED")) {
           hydrateAuthUser(session.user);
         } else if (event === "SIGNED_OUT") {
           setUser(null);
@@ -518,7 +551,12 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
           setPersonalRecords([]);
           setBodyMetrics([]);
           setGroups([]);
+          setGroupMembers([]);
+          setChallenges([]);
+          setActivityFeed([]);
           setLoggedMeals([]);
+          localStorage.removeItem(STORAGE_KEYS.USER);
+          localStorage.setItem(STORAGE_KEYS.IS_DEMO, "false");
         }
       });
 

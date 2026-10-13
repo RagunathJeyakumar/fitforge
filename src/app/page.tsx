@@ -105,7 +105,7 @@ export default function DashboardPage() {
                 {currentStreakWeeks} Week Consistency Streak
               </Badge>
               <span className="text-xs text-muted-foreground font-semibold">
-                • {user?.fitness_goal.toUpperCase()} PHASE
+                • {(user?.fitness_goal || "hypertrophy").toUpperCase()} PHASE
               </span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
