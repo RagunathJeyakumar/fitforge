@@ -54,15 +54,20 @@ export default function ExerciseLibraryPage() {
     "Triceps",
     "Core",
     "Calves",
+    "Full Body",
   ];
 
   const equipmentList: string[] = [
     "All",
-    "Barbell",
     "Dumbbell",
-    "Cable",
     "Machine",
+    "Ground / Mat",
+    "Barbell",
+    "Cable",
     "Bodyweight",
+    "Kettlebell",
+    "Smith Machine",
+    "Resistance Band",
   ];
 
   const difficulties: string[] = ["All", "Beginner", "Intermediate", "Advanced"];

@@ -18,7 +18,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useFitness } from "@/lib/store/fitnessStore";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlanExerciseItem, Exercise } from "@/lib/types";
+import { PlanExerciseItem, Exercise, WorkoutPlan } from "@/lib/types";
+import { SelectExerciseModal } from "@/components/exercise/SelectExerciseModal";
 
 export default function NewWorkoutRoutinePage() {
   const router = useRouter();
@@ -26,10 +27,9 @@ export default function NewWorkoutRoutinePage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [splitType, setSplitType] = useState<"Push/Pull/Legs" | "Upper/Lower" | "Full Body" | "Arnold" | "Custom">("Custom");
+  const [splitType, setSplitType] = useState<WorkoutPlan["split_type"]>("Custom");
   const [routineExercises, setRoutineExercises] = useState<PlanExerciseItem[]>([]);
   const [showAddDrawer, setShowAddDrawer] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
 
   const handleAddExercise = (exercise: Exercise) => {
     const newItem: PlanExerciseItem = {
@@ -43,7 +43,6 @@ export default function NewWorkoutRoutinePage() {
       rest_seconds: 90,
     };
     setRoutineExercises([...routineExercises, newItem]);
-    setShowAddDrawer(false);
   };
 
   const handleRemoveExercise = (index: number) => {
@@ -89,12 +88,6 @@ export default function NewWorkoutRoutinePage() {
 
     router.push("/workouts");
   };
-
-  const filteredLibrary = exercises.filter(
-    (e) =>
-      e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.primary_muscles.some((m) => m.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
 
   return (
     <AppShell>
@@ -143,6 +136,13 @@ export default function NewWorkoutRoutinePage() {
                   <option value="Push/Pull/Legs">Push / Pull / Legs</option>
                   <option value="Upper/Lower">Upper / Lower</option>
                   <option value="Full Body">Full Body</option>
+                  <option value="Chest & Triceps">Chest & Triceps</option>
+                  <option value="Back & Biceps">Back & Biceps</option>
+                  <option value="Shoulders & Arms">Shoulders & Arms</option>
+                  <option value="Legs & Glutes">Legs & Glutes</option>
+                  <option value="Core & Abs">Core & Abs</option>
+                  <option value="Ground & Calisthenics">Ground & Calisthenics</option>
+                  <option value="HIIT & Cardio">HIIT & Cardio</option>
                   <option value="Arnold">Arnold Split</option>
                   <option value="Custom">Custom</option>
                 </select>
@@ -335,52 +335,15 @@ export default function NewWorkoutRoutinePage() {
           </div>
         </form>
 
-        {/* Exercise Selection Drawer */}
-        {showAddDrawer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/80 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-lg max-h-[85vh] flex flex-col rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden">
-              <div className="p-5 border-b border-white/5 flex items-center justify-between">
-                <h3 className="text-lg font-black text-white">Select Exercise</h3>
-                <button
-                  onClick={() => setShowAddDrawer(false)}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-white"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <div className="p-4 border-b border-white/5">
-                <input
-                  type="text"
-                  placeholder="Search exercise..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-charcoal-950 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-lime-electric"
-                />
-              </div>
-
-              <div className="p-4 space-y-2 overflow-y-auto flex-1">
-                {filteredLibrary.map((ex) => (
-                  <div
-                    key={ex.id}
-                    onClick={() => handleAddExercise(ex)}
-                    className="p-3.5 rounded-xl bg-charcoal-950/70 hover:bg-charcoal-800 border border-white/5 hover:border-lime-electric/30 transition-all cursor-pointer flex items-center justify-between group"
-                  >
-                    <div>
-                      <h4 className="font-bold text-white text-sm group-hover:text-lime-electric transition-colors">
-                        {ex.name}
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        {ex.primary_muscles.join(", ")} • {ex.equipment}
-                      </p>
-                    </div>
-                    <Plus className="h-5 w-5 text-muted-foreground group-hover:text-lime-electric transition-colors" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Dynamic Multi-Filter Select Exercise Modal */}
+        <SelectExerciseModal
+          isOpen={showAddDrawer}
+          onClose={() => setShowAddDrawer(false)}
+          onSelectExercise={handleAddExercise}
+          alreadySelectedIds={routineExercises.map((r) => r.exercise_id)}
+          title="Select Exercise"
+          subtitle="Filter by body part, equipment (dumbbells, machines, ground workouts) & mechanics"
+        />
       </div>
     </AppShell>
   );

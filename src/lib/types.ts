@@ -23,7 +23,8 @@ export type EquipmentType =
   | "Bodyweight"
   | "Kettlebell"
   | "Resistance Band"
-  | "Smith Machine";
+  | "Smith Machine"
+  | "Ground / Mat";
 
 export type DifficultyLevel = "Beginner" | "Intermediate" | "Advanced";
 export type MovementType = "Compound" | "Isolation" | "Cardio" | "Isometric";
@@ -85,7 +86,19 @@ export interface WorkoutPlan {
   user_id: string;
   title: string;
   description: string;
-  split_type: "Push/Pull/Legs" | "Upper/Lower" | "Full Body" | "Arnold" | "Custom";
+  split_type:
+    | "Push/Pull/Legs"
+    | "Upper/Lower"
+    | "Full Body"
+    | "Arnold"
+    | "Chest & Triceps"
+    | "Back & Biceps"
+    | "Shoulders & Arms"
+    | "Legs & Glutes"
+    | "Core & Abs"
+    | "HIIT & Cardio"
+    | "Ground & Calisthenics"
+    | "Custom";
   days_count: number;
   is_public: boolean;
   exercises: PlanExerciseItem[];

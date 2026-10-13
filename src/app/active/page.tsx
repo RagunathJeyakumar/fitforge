@@ -24,6 +24,7 @@ import { usePwa } from "@/lib/pwa/PwaProvider";
 import { ActiveSetRow } from "@/components/workout/ActiveSetRow";
 import { RestTimerWidget } from "@/components/workout/RestTimerWidget";
 import { WorkoutSummaryModal } from "@/components/workout/WorkoutSummaryModal";
+import { SelectExerciseModal } from "@/components/exercise/SelectExerciseModal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +52,6 @@ export default function ActiveWorkoutPage() {
 
   const [finishedSummarySession, setFinishedSummarySession] = useState<WorkoutSession | null>(null);
   const [showAddExerciseDrawer, setShowAddExerciseDrawer] = useState(false);
-  const [exerciseSearch, setExerciseSearch] = useState("");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // Prevent accidental navigation away from an active gym workout
@@ -166,12 +166,6 @@ export default function ActiveWorkoutPage() {
       setFinishedSummarySession(finished);
     }
   };
-
-  const filteredExercisesToAdd = exercises.filter(
-    (e) =>
-      e.name.toLowerCase().includes(exerciseSearch.toLowerCase()) ||
-      e.primary_muscles.some((m) => m.toLowerCase().includes(exerciseSearch.toLowerCase()))
-  );
 
   return (
     <AppShell>
@@ -386,57 +380,18 @@ export default function ActiveWorkoutPage() {
           </Button>
         </div>
 
-        {/* Add Exercise Modal / Drawer */}
-        {showAddExerciseDrawer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/80 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-lg max-h-[85vh] flex flex-col rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden">
-              <div className="p-5 border-b border-white/5 flex items-center justify-between">
-                <h3 className="text-lg font-black text-white">
-                  Add Exercise to Session
-                </h3>
-                <button
-                  onClick={() => setShowAddExerciseDrawer(false)}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-white"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <div className="p-4 border-b border-white/5">
-                <input
-                  type="text"
-                  placeholder="Search by exercise name or muscle..."
-                  value={exerciseSearch}
-                  onChange={(e) => setExerciseSearch(e.target.value)}
-                  className="w-full bg-charcoal-950 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-lime-electric placeholder:text-muted-foreground"
-                />
-              </div>
-
-              <div className="p-4 space-y-2 overflow-y-auto flex-1">
-                {filteredExercisesToAdd.map((exercise) => (
-                  <div
-                    key={exercise.id}
-                    onClick={() => {
-                      addExerciseToActiveWorkout(exercise);
-                      setShowAddExerciseDrawer(false);
-                    }}
-                    className="p-3.5 rounded-xl bg-charcoal-950/70 hover:bg-charcoal-800 border border-white/5 hover:border-lime-electric/30 transition-all cursor-pointer flex items-center justify-between group"
-                  >
-                    <div>
-                      <h4 className="font-bold text-white text-sm group-hover:text-lime-electric transition-colors">
-                        {exercise.name}
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        {exercise.primary_muscles.join(", ")} • {exercise.equipment}
-                      </p>
-                    </div>
-                    <Plus className="h-5 w-5 text-muted-foreground group-hover:text-lime-electric transition-colors" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Dynamic Multi-Filter Select Exercise Modal */}
+        <SelectExerciseModal
+          isOpen={showAddExerciseDrawer}
+          onClose={() => setShowAddExerciseDrawer(false)}
+          onSelectExercise={(exercise) => {
+            addExerciseToActiveWorkout(exercise);
+            setShowAddExerciseDrawer(false);
+          }}
+          alreadySelectedIds={uniqueExerciseIds}
+          title="Add Exercise to Session"
+          subtitle="Explore all muscle categories & equipment modalities"
+        />
 
         {/* Discard Workout Confirmation */}
         {showCancelConfirm && (

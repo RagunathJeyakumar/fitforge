@@ -31,7 +31,20 @@ export default function WorkoutsPage() {
 
   const [activeFilter, setActiveFilter] = useState<string>("All");
 
-  const splitCategories = ["All", "Push/Pull/Legs", "Upper/Lower", "Full Body", "Custom"];
+  const splitCategories = [
+    "All",
+    "Push/Pull/Legs",
+    "Upper/Lower",
+    "Full Body",
+    "Chest & Triceps",
+    "Back & Biceps",
+    "Shoulders & Arms",
+    "Legs & Glutes",
+    "Core & Abs",
+    "Ground & Calisthenics",
+    "HIIT & Cardio",
+    "Custom",
+  ];
 
   const filteredPlans = activeFilter === "All"
     ? workoutPlans
