@@ -16,6 +16,7 @@ import {
   Zap,
   UtensilsCrossed,
   LogIn,
+  LogOut,
 } from "lucide-react";
 import { useFitness } from "@/lib/store/fitnessStore";
 import { cn } from "@/lib/utils";
@@ -34,7 +35,7 @@ const NAV_ITEMS = [
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
-  const { activeWorkout, user, isDemoMode, signInWithGoogle } = useFitness();
+  const { activeWorkout, user, isDemoMode, signInWithGoogle, logout } = useFitness();
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
@@ -138,31 +139,43 @@ export const Sidebar: React.FC = () => {
             Sign In with Google
           </button>
         )}
-        <Link
-          href="/settings"
-          className="flex items-center gap-3 p-2 rounded-xl hover:bg-charcoal-800 transition-colors"
-        >
-          {user?.avatar_url ? (
-            <img
-              src={user.avatar_url}
-              alt={user.full_name}
-              className="h-10 w-10 rounded-full object-cover border border-lime-electric/40"
-            />
-          ) : (
-            <div className="h-10 w-10 rounded-full bg-charcoal-700 flex items-center justify-center font-bold text-lime-electric text-sm border border-white/10">
-              {user?.full_name ? user.full_name.charAt(0) : "U"}
+        <div className="flex items-center justify-between gap-1">
+          <Link
+            href="/settings"
+            className="flex items-center gap-3 p-2 rounded-xl hover:bg-charcoal-800 transition-colors flex-1 min-w-0"
+            title="Account Settings"
+          >
+            {user?.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt={user.full_name}
+                className="h-10 w-10 rounded-full object-cover border border-lime-electric/40 shrink-0"
+              />
+            ) : (
+              <div className="h-10 w-10 rounded-full bg-charcoal-700 flex items-center justify-center font-bold text-lime-electric text-sm border border-white/10 shrink-0">
+                {user?.full_name ? user.full_name.charAt(0) : "U"}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white truncate">
+                {user?.full_name || "Guest Athlete"}
+              </p>
+              <p className="text-xs text-lime-electric flex items-center gap-1">
+                <Flame className="h-3 w-3 fill-lime-electric" />
+                {user?.target_days_per_week || 4} Days / Wk
+              </p>
             </div>
+          </Link>
+          {mounted && !isDemoMode && (
+            <button
+              onClick={logout}
+              className="p-2.5 rounded-xl text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0"
+              title="Sign Out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">
-              {user?.full_name || "Guest Athlete"}
-            </p>
-            <p className="text-xs text-lime-electric flex items-center gap-1">
-              <Flame className="h-3 w-3 fill-lime-electric" />
-              {user?.target_days_per_week || 4} Days / Wk
-            </p>
-          </div>
-        </Link>
+        </div>
       </div>
     </aside>
   );

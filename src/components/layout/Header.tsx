@@ -2,7 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
-import { Zap, Timer, Play, Pause, Plus, Sparkles, Download, Smartphone, LogIn } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Zap, Timer, Play, Pause, Plus, Sparkles, Download, Smartphone, LogIn, LogOut } from "lucide-react";
 import { useFitness } from "@/lib/store/fitnessStore";
 import { usePwa } from "@/lib/pwa/PwaProvider";
 import { formatDuration } from "@/lib/utils";
@@ -10,6 +11,7 @@ import { Badge } from "../ui/badge";
 import { NetworkStatusBadge } from "../pwa/NetworkStatusBadge";
 
 export const Header: React.FC = () => {
+  const router = useRouter();
   const {
     activeWorkout,
     pauseRestTimer,
@@ -18,6 +20,7 @@ export const Header: React.FC = () => {
     isSupabaseConfigured,
     user,
     signInWithGoogle,
+    logout,
   } = useFitness();
 
   const {
@@ -32,6 +35,11 @@ export const Header: React.FC = () => {
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleSignOut = async () => {
+    await logout();
+    router.push("/login");
+  };
 
   return (
     <header className="sticky top-0 z-30 w-full bg-charcoal-950/80 backdrop-blur-xl border-b border-white/5 px-4 lg:px-8 py-3 flex items-center justify-between gap-3">
@@ -111,9 +119,24 @@ export const Header: React.FC = () => {
               Sign In with Google
             </button>
           ) : (
-            <Badge variant="secondary" className="text-[11px] text-emerald-400 border-emerald-500/30">
-              {user?.full_name ? `${user.full_name.split(" ")[0]} (Connected)` : "Supabase Connected"}
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <Link
+                href="/settings"
+                className="text-[11px] text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 rounded-lg hover:border-emerald-400 font-semibold flex items-center gap-1.5 max-w-[125px] sm:max-w-none truncate transition-colors"
+                title="Account Settings"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span className="truncate">{user?.full_name ? user.full_name.split(" ")[0] : "Connected"}</span>
+              </Link>
+              <button
+                onClick={handleSignOut}
+                className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg bg-charcoal-800 hover:bg-rose-500/20 text-muted-foreground hover:text-rose-400 border border-white/10 hover:border-rose-500/30 transition-all cursor-pointer"
+                title="Sign Out"
+              >
+                <LogOut className="h-3.5 w-3.5 text-rose-400" />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
+            </div>
           )
         )}
 
