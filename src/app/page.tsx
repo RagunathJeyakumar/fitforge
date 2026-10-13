@@ -37,6 +37,8 @@ export default function DashboardPage() {
     isDemoMode,
     clearToBlankState,
     signInWithGoogle,
+    groups,
+    groupMembers,
   } = useFitness();
 
   // Calculate current week metrics
@@ -49,6 +51,15 @@ export default function DashboardPage() {
 
   // Next recommended workout routine
   const recommendedPlan = workoutPlans[0];
+
+  const primaryGroup = groups[0] || null;
+  const currentGroupMembers = primaryGroup
+    ? groupMembers.filter((m) => m.group_id === primaryGroup.id)
+    : [];
+  const userRank =
+    primaryGroup && currentGroupMembers.length > 0
+      ? currentGroupMembers.findIndex((m) => m.user_id === user?.id) + 1 || 1
+      : 1;
 
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => {
@@ -187,8 +198,10 @@ export default function DashboardPage() {
             <div className="text-2xl sm:text-3xl font-black font-mono text-amber-400">
               {personalRecords.length}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Top: Bench 100kg × 6
+            <p className="text-xs text-muted-foreground mt-1 truncate">
+              {personalRecords.length > 0
+                ? `Top: ${personalRecords[0].exercise_name.split(" ")[0]} ${personalRecords[0].max_weight_kg}kg`
+                : "Log sets to record PRs"}
             </p>
           </Card>
 
@@ -198,10 +211,19 @@ export default function DashboardPage() {
               <Users className="h-4 w-4 text-purple-400" />
             </div>
             <div className="text-2xl sm:text-3xl font-black font-mono text-white">
-              #2 <span className="text-xs font-sans text-muted-foreground font-semibold">of 4</span>
+              {primaryGroup ? (
+                <>
+                  #{userRank}{" "}
+                  <span className="text-xs font-sans text-muted-foreground font-semibold">
+                    of {Math.max(1, currentGroupMembers.length)}
+                  </span>
+                </>
+              ) : (
+                <span className="text-xl font-bold text-muted-foreground">Solo</span>
+              )}
             </div>
-            <p className="text-xs text-purple-400 mt-1">
-              Iron Forge Syndicate
+            <p className="text-xs text-purple-400 mt-1 truncate">
+              {primaryGroup ? primaryGroup.name : "Join squad to rank"}
             </p>
           </Card>
         </div>
@@ -407,86 +429,106 @@ export default function DashboardPage() {
               </div>
 
               <div className="space-y-3">
-                {activityFeed.slice(0, 4).map((item) => {
-                  const isFood = item.action_type === "meal_logged";
-                  const isPR = item.action_type === "pr_broken";
-
-                  return (
-                    <div
-                      key={item.id}
-                      className="p-3 rounded-2xl bg-charcoal-950/60 border border-white/5 hover:border-white/10 transition-all space-y-2"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <div className="h-7 w-7 rounded-full bg-charcoal-800 border border-white/10 flex items-center justify-center font-bold text-lime-electric shrink-0 overflow-hidden text-xs">
-                            {item.user_avatar ? (
-                              <img src={item.user_avatar} alt={item.user_name} className="h-full w-full object-cover" />
-                            ) : (
-                              item.user_name.charAt(0)
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-xs text-foreground font-bold text-white leading-tight">
-                              {item.user_name}
-                            </p>
-                            <span className="text-[10px] text-muted-foreground font-mono">{item.timestamp}</span>
-                          </div>
-                        </div>
-
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-charcoal-900 border border-white/10 text-muted-foreground">
-                          {isFood ? "🥗 Fuel" : isPR ? "🏆 PR" : "⚡ Lift"}
-                        </span>
-                      </div>
-
-                      {isFood ? (
-                        <div className="text-xs space-y-1">
-                          <p className="font-semibold text-white leading-snug">
-                            {item.food_name}
-                            {item.tamil_name && (
-                              <span className="text-[10px] text-amber-300 ml-1.5 font-normal">
-                                ({item.tamil_name})
-                              </span>
-                            )}
-                          </p>
-                          <div className="flex items-center gap-2 text-[11px] font-mono">
-                            <span className="text-lime-electric font-bold">{item.protein_g}g Protein</span>
-                            <span className="text-muted-foreground">•</span>
-                            <span className="text-amber-300">{item.calories} kcal</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-xs space-y-0.5">
-                          <p className="font-semibold text-white">
-                            {isPR ? "Broke PR on " : "Completed "}
-                            <span className="text-lime-electric">{item.workout_name}</span>
-                          </p>
-                          {item.volume_kg && (
-                            <p className="text-[10px] text-muted-foreground font-mono">
-                              Volume: {item.volume_kg.toLocaleString()} kg
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
-                        <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">
-                          {isFood ? (item.motivation_badge || "Clean fuel") : "Consistency"}
-                        </span>
-                        <button
-                          onClick={() => cheerActivity(item.id)}
-                          className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${
-                            item.has_cheered
-                              ? "bg-lime-electric/20 text-lime-electric border border-lime-electric"
-                              : "bg-charcoal-800 text-muted-foreground hover:text-white"
-                          }`}
-                        >
-                          <Flame className="h-3 w-3 text-amber-400" />
-                          <span>{item.has_cheered ? "Hyped" : "Hype"} ({item.cheers_count || 0})</span>
-                        </button>
-                      </div>
+                {activityFeed.length === 0 ? (
+                  <div className="p-5 rounded-2xl bg-charcoal-950/60 border border-white/5 text-center space-y-2.5 py-6">
+                    <p className="text-xs text-muted-foreground">
+                      No activities logged yet. Complete a workout or log a fuel meal to start your live feed.
+                    </p>
+                    <div className="flex items-center justify-center gap-2 pt-1">
+                      <Link href="/workouts">
+                        <Button size="sm" variant="outline" className="text-xs h-8">
+                          🏋️ Workout
+                        </Button>
+                      </Link>
+                      <Link href="/diet">
+                        <Button size="sm" variant="default" className="text-xs h-8">
+                          🥗 Log Meal
+                        </Button>
+                      </Link>
                     </div>
-                  );
-                })}
+                  </div>
+                ) : (
+                  activityFeed.slice(0, 4).map((item) => {
+                    const isFood = item.action_type === "meal_logged";
+                    const isPR = item.action_type === "pr_broken";
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="p-3 rounded-2xl bg-charcoal-950/60 border border-white/5 hover:border-white/10 transition-all space-y-2"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="h-7 w-7 rounded-full bg-charcoal-800 border border-white/10 flex items-center justify-center font-bold text-lime-electric shrink-0 overflow-hidden text-xs">
+                              {item.user_avatar ? (
+                                <img src={item.user_avatar} alt={item.user_name} className="h-full w-full object-cover" />
+                              ) : (
+                                item.user_name.charAt(0)
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-xs text-foreground font-bold text-white leading-tight">
+                                {item.user_name}
+                              </p>
+                              <span className="text-[10px] text-muted-foreground font-mono">{item.timestamp}</span>
+                            </div>
+                          </div>
+
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-charcoal-900 border border-white/10 text-muted-foreground">
+                            {isFood ? "🥗 Fuel" : isPR ? "🏆 PR" : "⚡ Lift"}
+                          </span>
+                        </div>
+
+                        {isFood ? (
+                          <div className="text-xs space-y-1">
+                            <p className="font-semibold text-white leading-snug">
+                              {item.food_name}
+                              {item.tamil_name && (
+                                <span className="text-[10px] text-amber-300 ml-1.5 font-normal">
+                                  ({item.tamil_name})
+                                </span>
+                              )}
+                            </p>
+                            <div className="flex items-center gap-2 text-[11px] font-mono">
+                              <span className="text-lime-electric font-bold">{item.protein_g}g Protein</span>
+                              <span className="text-muted-foreground">•</span>
+                              <span className="text-amber-300">{item.calories} kcal</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs space-y-0.5">
+                            <p className="font-semibold text-white">
+                              {isPR ? "Broke PR on " : "Completed "}
+                              <span className="text-lime-electric">{item.workout_name}</span>
+                            </p>
+                            {item.volume_kg && (
+                              <p className="text-[10px] text-muted-foreground font-mono">
+                                Volume: {item.volume_kg.toLocaleString()} kg
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
+                          <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">
+                            {isFood ? (item.motivation_badge || "Clean fuel") : "Consistency"}
+                          </span>
+                          <button
+                            onClick={() => cheerActivity(item.id)}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${
+                              item.has_cheered
+                                ? "bg-lime-electric/20 text-lime-electric border border-lime-electric"
+                                : "bg-charcoal-800 text-muted-foreground hover:text-white"
+                            }`}
+                          >
+                            <Flame className="h-3 w-3 text-amber-400" />
+                            <span>{item.has_cheered ? "Hyped" : "Hype"} ({item.cheers_count || 0})</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
               <Link href="/social" className="block mt-3">

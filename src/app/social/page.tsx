@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   Users,
   Trophy,
@@ -342,68 +343,81 @@ export default function SocialPage() {
               </div>
 
               <div className="space-y-3">
-                {rankedMembers.map((member, idx) => {
-                  const isCurrentUser = member.user_id === user?.id;
-                  const rankIcons = ["🥇", "🥈", "🥉"];
+                {rankedMembers.length === 0 ? (
+                  <div className="p-8 rounded-2xl bg-charcoal-950/60 border border-white/5 text-center space-y-2 py-10">
+                    <p className="text-sm font-bold text-white">No Lifters In Squad Yet</p>
+                    <p className="text-xs text-muted-foreground">
+                      Share invite code{" "}
+                      <span className="text-lime-electric font-mono font-bold">
+                        {currentGroup?.invite_code}
+                      </span>{" "}
+                      with gym partners or log your own workouts to take the #1 spot!
+                    </p>
+                  </div>
+                ) : (
+                  rankedMembers.map((member, idx) => {
+                    const isCurrentUser = member.user_id === user?.id;
+                    const rankIcons = ["🥇", "🥈", "🥉"];
 
-                  return (
-                    <div
-                      key={member.id}
-                      className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                        isCurrentUser
-                          ? "bg-lime-electric/10 border-lime-electric/40 shadow-[0_0_20px_rgba(204,255,0,0.08)]"
-                          : "bg-charcoal-950/60 border-white/5 hover:border-white/10"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="w-6 text-center font-mono font-black text-base text-muted-foreground">
-                          {rankIcons[idx] || `#${idx + 1}`}
-                        </span>
+                    return (
+                      <div
+                        key={member.id}
+                        className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                          isCurrentUser
+                            ? "bg-lime-electric/10 border-lime-electric/40 shadow-[0_0_20px_rgba(204,255,0,0.08)]"
+                            : "bg-charcoal-950/60 border-white/5 hover:border-white/10"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="w-6 text-center font-mono font-black text-base text-muted-foreground">
+                            {rankIcons[idx] || `#${idx + 1}`}
+                          </span>
 
-                        <div className="h-11 w-11 rounded-full bg-charcoal-800 border border-white/10 flex items-center justify-center font-bold text-lime-electric overflow-hidden shrink-0">
-                          {member.user_profile.avatar_url ? (
-                            <img
-                              src={member.user_profile.avatar_url}
-                              alt={member.user_profile.full_name}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            member.user_profile.full_name.charAt(0)
-                          )}
-                        </div>
-
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-white text-sm">
-                              {member.user_profile.full_name}
-                            </h4>
-                            {isCurrentUser && (
-                              <Badge variant="default" className="text-[9px] py-0 px-1.5 font-bold">
-                                You
-                              </Badge>
+                          <div className="h-11 w-11 rounded-full bg-charcoal-800 border border-white/10 flex items-center justify-center font-bold text-lime-electric overflow-hidden shrink-0">
+                            {member.user_profile.avatar_url ? (
+                              <img
+                                src={member.user_profile.avatar_url}
+                                alt={member.user_profile.full_name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              member.user_profile.full_name.charAt(0)
                             )}
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                            <span className="flex items-center gap-1 text-amber-400 font-semibold">
-                              <Flame className="h-3 w-3 fill-amber-400" />
-                              {member.streak_weeks}w streak
-                            </span>
-                            <span>•</span>
-                            <span>{member.weekly_workouts_count} workouts</span>
+
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-white text-sm">
+                                {member.user_profile.full_name}
+                              </h4>
+                              {isCurrentUser && (
+                                <Badge variant="default" className="text-[9px] py-0 px-1.5 font-bold">
+                                  You
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                              <span className="flex items-center gap-1 text-amber-400 font-semibold">
+                                <Flame className="h-3 w-3 fill-amber-400" />
+                                {member.streak_weeks}w streak
+                              </span>
+                              <span>•</span>
+                              <span>{member.weekly_workouts_count} workouts</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="text-right">
-                        <div className="text-base sm:text-lg font-black font-mono text-lime-electric">
-                          {member.weekly_volume_kg.toLocaleString()}{" "}
-                          <span className="text-[10px] font-sans text-muted-foreground">kg</span>
+                        <div className="text-right">
+                          <div className="text-base sm:text-lg font-black font-mono text-lime-electric">
+                            {member.weekly_volume_kg.toLocaleString()}{" "}
+                            <span className="text-[10px] font-sans text-muted-foreground">kg</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">Volume</p>
                         </div>
-                        <p className="text-[10px] text-muted-foreground">Volume</p>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </Card>
 
@@ -535,10 +549,48 @@ export default function SocialPage() {
 
           {/* Activity Feed Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredFeed.map((item) => {
-              const isFood = item.action_type === "meal_logged";
-              const isPR = item.action_type === "pr_broken";
-              const isJoined = item.action_type === "joined_group";
+            {filteredFeed.length === 0 ? (
+              <div className="col-span-full p-8 sm:p-12 rounded-3xl bg-gradient-to-br from-charcoal-900/90 via-charcoal-900/80 to-charcoal-950 border border-white/5 text-center space-y-4 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-lime-electric/5 rounded-full blur-3xl pointer-events-none" />
+                <div className="h-14 w-14 rounded-2xl bg-charcoal-800 text-lime-electric flex items-center justify-center mx-auto border border-lime-electric/30 shadow-lime-sm">
+                  <Sparkles className="h-7 w-7" />
+                </div>
+                <div className="space-y-1.5 max-w-md mx-auto">
+                  <h3 className="text-lg sm:text-xl font-black text-white">
+                    {feedFilter === "food"
+                      ? "No Fuel Meals Logged Yet"
+                      : feedFilter === "workouts"
+                      ? "No Workouts Logged Yet"
+                      : "Your Squad Feed Is Ready"}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    {feedFilter === "food"
+                      ? "Track your clean macros, Tamil Nadu superfoods, or protein shakes to inspire your squad."
+                      : feedFilter === "workouts"
+                      ? "Smash a heavy lifting session and log your volume to set the benchmark on the squad board."
+                      : "Be the first to ignite the feed! Complete a workout session or record your nutritional fuel to share real-time motivation."}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <Link href="/workouts">
+                    <Button variant="outline" size="sm" className="text-xs font-bold h-10 px-4 border-white/10 hover:border-lime-electric/40">
+                      <Dumbbell className="h-4 w-4 mr-2 text-lime-electric" />
+                      Start Workout
+                    </Button>
+                  </Link>
+                  <Link href="/diet">
+                    <Button variant="default" size="sm" className="text-xs font-bold h-10 px-4 shadow-lime-sm">
+                      <Utensils className="h-4 w-4 mr-2" />
+                      Log Fuel Meal
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              filteredFeed.map((item) => {
+                const isFood = item.action_type === "meal_logged";
+                const isPR = item.action_type === "pr_broken";
+                const isJoined = item.action_type === "joined_group";
 
               if (isFood) {
                 // Motivational Food Card with WOW Aesthetics
@@ -803,7 +855,8 @@ export default function SocialPage() {
                   </div>
                 </Card>
               );
-            })}
+            })
+          )}
           </div>
         </div>
 

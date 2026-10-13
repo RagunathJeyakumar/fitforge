@@ -369,11 +369,19 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const saved = localStorage.getItem(STORAGE_KEYS.ACTIVITY_FEED);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed)) {
+            return parsed.filter(
+              (i: any) =>
+                i &&
+                i.is_real &&
+                !i.id?.startsWith("act-food-") &&
+                !i.id?.startsWith("act-")
+            );
+          }
         }
       } catch {}
     }
-    return DEMO_ACTIVITY_FEED;
+    return [];
   });
 
   // Nutrition & Diet State
@@ -477,16 +485,29 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (savedMembers) {
         try {
           const parsed = JSON.parse(savedMembers);
-          if (Array.isArray(parsed) && parsed.length > 0) setGroupMembers(parsed);
-          else {
-            setGroupMembers(DEMO_MEMBERS);
-            localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(DEMO_MEMBERS));
+          if (Array.isArray(parsed)) {
+            const cleanMembers = parsed.filter(
+              (m: any) =>
+                !m.user_id?.startsWith("user-elena") &&
+                !m.user_id?.startsWith("user-liam") &&
+                !m.user_id?.startsWith("user-dave") &&
+                !m.user_id?.startsWith("user-marcus") &&
+                !m.id?.includes("elena") &&
+                !m.id?.includes("liam") &&
+                !m.id?.includes("dave")
+            );
+            setGroupMembers(cleanMembers);
+            localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(cleanMembers));
+          } else {
+            setGroupMembers([]);
+            localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify([]));
           }
         } catch {
-          setGroupMembers(DEMO_MEMBERS);
+          setGroupMembers([]);
         }
       } else {
-        localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(DEMO_MEMBERS));
+        setGroupMembers([]);
+        localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify([]));
       }
 
       const savedChallenges = localStorage.getItem(STORAGE_KEYS.CHALLENGES);
@@ -509,16 +530,27 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (savedFeed) {
         try {
           const parsed = JSON.parse(savedFeed);
-          if (Array.isArray(parsed) && parsed.length > 0) setActivityFeed(parsed);
-          else {
-            setActivityFeed(DEMO_ACTIVITY_FEED);
-            localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(DEMO_ACTIVITY_FEED));
+          if (Array.isArray(parsed)) {
+            const cleanFeed = parsed.filter(
+              (i: any) =>
+                i &&
+                i.is_real &&
+                !i.id?.startsWith("act-food-") &&
+                !i.id?.startsWith("act-")
+            );
+            setActivityFeed(cleanFeed);
+            localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(cleanFeed));
+          } else {
+            setActivityFeed([]);
+            localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify([]));
           }
         } catch {
-          setActivityFeed(DEMO_ACTIVITY_FEED);
+          setActivityFeed([]);
+          localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify([]));
         }
       } else {
-        localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(DEMO_ACTIVITY_FEED));
+        setActivityFeed([]);
+        localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify([]));
       }
 
       const savedTargets = localStorage.getItem(STORAGE_KEYS.NUTRITION_TARGETS);
@@ -574,12 +606,23 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setGroups(activeGroups);
         localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(activeGroups));
 
-        let activeMembers = DEMO_MEMBERS;
+        let activeMembers: GroupMember[] = [];
         const rawSavedMembers = localStorage.getItem(STORAGE_KEYS.MEMBERS);
         if (rawSavedMembers) {
           try {
             const parsed = JSON.parse(rawSavedMembers);
-            if (Array.isArray(parsed) && parsed.length > 0) activeMembers = parsed;
+            if (Array.isArray(parsed)) {
+              activeMembers = parsed.filter(
+                (m: any) =>
+                  !m.user_id?.startsWith("user-elena") &&
+                  !m.user_id?.startsWith("user-liam") &&
+                  !m.user_id?.startsWith("user-dave") &&
+                  !m.user_id?.startsWith("user-marcus") &&
+                  !m.id?.includes("elena") &&
+                  !m.id?.includes("liam") &&
+                  !m.id?.includes("dave")
+              );
+            }
           } catch {}
         }
         // Ensure the logged in user is registered in the squad members roster
@@ -616,12 +659,20 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setChallenges(activeChallenges);
         localStorage.setItem(STORAGE_KEYS.CHALLENGES, JSON.stringify(activeChallenges));
 
-        let activeFeed = DEMO_ACTIVITY_FEED;
+        let activeFeed: ActivityFeedItem[] = [];
         const rawSavedFeed = localStorage.getItem(STORAGE_KEYS.ACTIVITY_FEED);
         if (rawSavedFeed) {
           try {
             const parsed = JSON.parse(rawSavedFeed);
-            if (Array.isArray(parsed) && parsed.length > 0) activeFeed = parsed;
+            if (Array.isArray(parsed)) {
+              activeFeed = parsed.filter(
+                (i: any) =>
+                  i &&
+                  i.is_real &&
+                  !i.id?.startsWith("act-food-") &&
+                  !i.id?.startsWith("act-")
+              );
+            }
           } catch {}
         }
         setActivityFeed(activeFeed);
@@ -743,17 +794,13 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
             });
           }
 
-          // Real activities take top priority; keep demo items only if fewer than 4 real posts exist
-          if (realCloudActivities.length > 0) {
-            const localOnlyReal = activeFeed.filter(
-              (item) => item.is_real && !realCloudActivities.some((r) => r.id === item.id)
-            );
-            const allReal = [...localOnlyReal, ...realCloudActivities];
-            const fillerDemo = allReal.length < 4 ? DEMO_ACTIVITY_FEED.slice(0, 4 - allReal.length) : [];
-            const merged = [...allReal, ...fillerDemo];
-            setActivityFeed(merged);
-            localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(merged));
-          }
+          // Real activities only: NEVER inject mock or filler posts
+          const localOnlyReal = activeFeed.filter(
+            (item) => item.is_real && !realCloudActivities.some((r) => r.id === item.id)
+          );
+          const allReal = [...localOnlyReal, ...realCloudActivities];
+          setActivityFeed(allReal);
+          localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(allReal));
         } catch (dbErr) {
           console.warn("Could not load cloud tables:", dbErr);
         }
@@ -1562,15 +1609,16 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Activity feed post
     const feedItem: ActivityFeedItem = {
-      id: `act-${Date.now()}`,
+      id: `cloud-create-${Date.now()}`,
       user_id: user?.id || "user-current",
       user_name: user?.full_name || "Athlete",
       user_avatar: user?.avatar_url,
       action_type: "joined_group",
       workout_name: `Created Squad: ${newGroup.name} 🚀`,
       timestamp: "Just now",
-      cheers_count: 1,
+      cheers_count: 0,
       has_cheered: false,
+      is_real: true,
     };
     setActivityFeed((prev) => {
       const updated = [feedItem, ...prev];
@@ -1611,8 +1659,8 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       name: squadName,
       description: squadDesc,
       invite_code: formatted,
-      created_by: "coach-alex",
-      members_count: 4,
+      created_by: user?.id || "user-current",
+      members_count: 1,
       is_user_admin: false,
       created_at: new Date().toISOString(),
     };
@@ -1623,10 +1671,11 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return updated;
     });
 
-    // Populate active members
+    // Populate active members: ONLY the real user! No fake friends
+    const liveVolume = completedSessions.reduce((acc, s) => acc + (s.total_volume_kg || 0), 0);
     const newMembers: GroupMember[] = [
       {
-        id: `mem-${newGroupId}-self`,
+        id: `mem-${newGroupId}-${user?.id || "self"}`,
         group_id: newGroupId,
         user_id: user?.id || "user-current",
         role: "member",
@@ -1635,60 +1684,23 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
           avatar_url: user?.avatar_url,
           email: user?.email || "",
         },
-        weekly_workouts_count: 2,
-        weekly_volume_kg: 8400,
-        streak_weeks: 2,
-        joined_at: new Date().toISOString(),
-      },
-      {
-        id: `mem-${newGroupId}-elena`,
-        group_id: newGroupId,
-        user_id: "user-elena",
-        role: "admin",
-        user_profile: {
-          full_name: DEMO_FRIENDS[0].full_name,
-          avatar_url: DEMO_FRIENDS[0].avatar_url,
-          email: DEMO_FRIENDS[0].email,
-        },
-        weekly_workouts_count: 4,
-        weekly_volume_kg: 18400,
-        streak_weeks: 6,
-        joined_at: new Date().toISOString(),
-      },
-      {
-        id: `mem-${newGroupId}-liam`,
-        group_id: newGroupId,
-        user_id: "user-liam",
-        role: "member",
-        user_profile: {
-          full_name: DEMO_FRIENDS[1].full_name,
-          avatar_url: DEMO_FRIENDS[1].avatar_url,
-          email: DEMO_FRIENDS[1].email,
-        },
-        weekly_workouts_count: 3,
-        weekly_volume_kg: 10200,
-        streak_weeks: 3,
-        joined_at: new Date().toISOString(),
-      },
-      {
-        id: `mem-${newGroupId}-dave`,
-        group_id: newGroupId,
-        user_id: "user-dave",
-        role: "member",
-        user_profile: {
-          full_name: DEMO_FRIENDS[2].full_name,
-          avatar_url: DEMO_FRIENDS[2].avatar_url,
-          email: DEMO_FRIENDS[2].email,
-        },
-        weekly_workouts_count: 3,
-        weekly_volume_kg: 9400,
-        streak_weeks: 4,
+        weekly_workouts_count: completedSessions.length,
+        weekly_volume_kg: liveVolume,
+        streak_weeks: 1,
         joined_at: new Date().toISOString(),
       },
     ];
 
     setGroupMembers((prev) => {
-      const updated = [...newMembers, ...prev];
+      const cleanPrev = prev.filter(
+        (m) =>
+          m.user_id !== (user?.id || "user-current") &&
+          !m.user_id?.startsWith("user-elena") &&
+          !m.user_id?.startsWith("user-liam") &&
+          !m.user_id?.startsWith("user-dave") &&
+          !m.user_id?.startsWith("user-marcus")
+      );
+      const updated = [...newMembers, ...cleanPrev];
       localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
       return updated;
     });
@@ -1704,7 +1716,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       unit: "kg",
       start_date: new Date().toISOString().split("T")[0],
       end_date: "2026-10-31",
-      user_progress: 26400,
+      user_progress: liveVolume,
       created_at: new Date().toISOString(),
     };
 
@@ -1716,15 +1728,16 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Activity feed post
     const feedItem: ActivityFeedItem = {
-      id: `act-${Date.now()}`,
+      id: `cloud-join-${Date.now()}`,
       user_id: user?.id || "user-current",
       user_name: user?.full_name || "Athlete",
       user_avatar: user?.avatar_url,
       action_type: "joined_group",
       workout_name: `Joined ${squadName} ⚡`,
       timestamp: "Just now",
-      cheers_count: 2,
+      cheers_count: 0,
       has_cheered: false,
+      is_real: true,
     };
 
     setActivityFeed((prev) => {
@@ -1734,7 +1747,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     return true;
-  }, [groups, user]);
+  }, [groups, user, completedSessions]);
 
   const leaveGroup = useCallback((groupId: string) => {
     setGroups((prev) => {
