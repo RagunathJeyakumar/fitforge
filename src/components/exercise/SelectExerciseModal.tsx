@@ -183,11 +183,11 @@ export const SelectExerciseModal: React.FC<SelectExerciseModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="w-full max-w-4xl h-[94dvh] sm:h-auto sm:max-h-[92vh] flex flex-col rounded-t-3xl sm:rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Modal Header */}
-        <div className="p-4 sm:p-5 border-b border-white/5 flex items-center justify-between bg-charcoal-950/40">
+        <div className="p-4 sm:p-5 border-b border-white/5 flex items-center justify-between shrink-0 bg-charcoal-950/40">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-2xl bg-lime-electric/10 border border-lime-electric/20 flex items-center justify-center text-lime-electric shadow-lime-sm">
               <Dumbbell className="h-5 w-5" />
@@ -217,7 +217,7 @@ export const SelectExerciseModal: React.FC<SelectExerciseModalProps> = ({
         </div>
 
         {/* Search & Filter Header Section */}
-        <div className="p-4 border-b border-white/5 bg-charcoal-950/20 space-y-3">
+        <div className="p-3 sm:p-4 border-b border-white/5 bg-charcoal-950/20 space-y-2.5 sm:space-y-3 shrink-0">
           
           {/* Search Bar */}
           <div className="relative">
@@ -350,7 +350,7 @@ export const SelectExerciseModal: React.FC<SelectExerciseModalProps> = ({
         </div>
 
         {/* Exercise List / Cards Grid */}
-        <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-2.5 max-h-[58vh]">
+        <div className="p-3 sm:p-5 overflow-y-auto flex-1 min-h-0 space-y-2.5">
           {filteredExercises.length === 0 ? (
             <div className="py-14 px-4 text-center space-y-4">
               <div className="h-16 w-16 rounded-full bg-charcoal-800 border border-white/5 flex items-center justify-center mx-auto text-muted-foreground">
@@ -476,7 +476,7 @@ export const SelectExerciseModal: React.FC<SelectExerciseModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3.5 sm:p-4 border-t border-white/5 bg-charcoal-950/60 flex items-center justify-between text-xs text-muted-foreground">
+        <div className="p-3 sm:p-4 border-t border-white/5 bg-charcoal-950/60 flex items-center justify-between text-xs text-muted-foreground shrink-0 pb-safe pb-4">
           <div className="flex items-center gap-1.5">
             <span className="font-bold text-white">{filteredExercises.length}</span>
             <span>of {exercises.length} total exercises shown</span>

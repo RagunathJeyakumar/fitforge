@@ -250,8 +250,8 @@ export default function AnalyticsPage() {
 
         {/* Log Weigh-In Modal */}
         {showAddMetricModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/80 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-sm rounded-3xl bg-charcoal-900 border border-white/10 p-6 shadow-2xl space-y-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-sm max-h-[92dvh] overflow-y-auto rounded-3xl bg-charcoal-900 border border-white/10 p-5 sm:p-6 shadow-2xl space-y-4 pb-safe">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-black text-white">Log Weigh-In</h3>
                 <button

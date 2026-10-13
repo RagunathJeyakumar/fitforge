@@ -51,8 +51,8 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   const prSets = session.sets.filter((s) => s.is_pr);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="w-full max-w-md rounded-3xl bg-charcoal-900 border border-lime-electric/40 p-6 sm:p-8 shadow-2xl relative overflow-hidden text-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="w-full max-w-md max-h-[92dvh] overflow-y-auto rounded-3xl bg-charcoal-900 border border-lime-electric/40 p-5 sm:p-8 shadow-2xl relative text-center pb-safe">
         {/* Glow backdrop */}
         <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-lime-electric/20 rounded-full blur-3xl pointer-events-none" />
 

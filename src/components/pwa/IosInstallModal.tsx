@@ -11,8 +11,8 @@ export const IosInstallModal: React.FC = () => {
   if (!showIosModal) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-charcoal-900 border border-white/10 rounded-3xl max-w-sm w-full p-6 space-y-5 shadow-2xl relative">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-charcoal-900 border border-white/10 rounded-3xl max-w-sm w-full max-h-[92dvh] overflow-y-auto p-5 sm:p-6 space-y-5 shadow-2xl relative pb-safe">
         <button
           onClick={() => setShowIosModal(false)}
           className="absolute top-4 right-4 p-1.5 rounded-full text-muted-foreground hover:text-white bg-charcoal-800 transition-colors"

@@ -32,8 +32,8 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   const pr = personalRecords.find((p) => p.exercise_id === exercise.id);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="w-full max-w-2xl max-h-[94dvh] sm:max-h-[90vh] flex flex-col rounded-t-3xl sm:rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden">
         {/* Header with image/media or dark stylized hero */}
         <div className="relative p-6 bg-gradient-to-b from-charcoal-800 to-charcoal-900 border-b border-white/5">
           <div className="flex items-start justify-between gap-4">
@@ -172,7 +172,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 bg-charcoal-950 border-t border-white/5 flex items-center justify-between gap-3">
+        <div className="p-4 bg-charcoal-950 border-t border-white/5 flex items-center justify-between gap-3 shrink-0 pb-safe pb-4">
           <Button variant="ghost" onClick={onClose} className="text-xs">
             Close
           </Button>

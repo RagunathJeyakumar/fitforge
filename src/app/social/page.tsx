@@ -370,8 +370,8 @@ export default function SocialPage() {
 
         {/* Join Group Modal */}
         {showJoinModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/80 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-sm rounded-3xl bg-charcoal-900 border border-white/10 p-6 shadow-2xl space-y-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-sm max-h-[92dvh] overflow-y-auto rounded-3xl bg-charcoal-900 border border-white/10 p-5 sm:p-6 shadow-2xl space-y-4 pb-safe">
               <h3 className="text-xl font-black text-white">Join Friend Squad</h3>
               <p className="text-xs text-muted-foreground">
                 Enter the private invite code provided by your group creator.
@@ -406,8 +406,8 @@ export default function SocialPage() {
 
         {/* Create Group Modal */}
         {showCreateModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/80 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-md rounded-3xl bg-charcoal-900 border border-white/10 p-6 shadow-2xl space-y-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-md max-h-[92dvh] overflow-y-auto rounded-3xl bg-charcoal-900 border border-white/10 p-5 sm:p-6 shadow-2xl space-y-4 pb-safe">
               <h3 className="text-xl font-black text-white">Create Private Squad</h3>
               <p className="text-xs text-muted-foreground">
                 Start a private circle for you and your gym friends.

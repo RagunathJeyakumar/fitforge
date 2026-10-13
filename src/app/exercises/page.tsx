@@ -299,9 +299,9 @@ export default function ExerciseLibraryPage() {
 
         {/* Create Custom Exercise Modal */}
         {showCreateModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/80 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-lg rounded-3xl bg-charcoal-900 border border-white/10 p-6 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between">
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-lg max-h-[94dvh] sm:max-h-[90vh] flex flex-col rounded-t-3xl sm:rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden">
+              <div className="p-4 sm:p-6 border-b border-white/5 flex items-center justify-between shrink-0">
                 <h3 className="text-xl font-black text-white">Create Custom Lift</h3>
                 <button
                   onClick={() => setShowCreateModal(false)}
@@ -311,7 +311,7 @@ export default function ExerciseLibraryPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleCreateCustom} className="space-y-4">
+              <form onSubmit={handleCreateCustom} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 min-h-0 pb-safe pb-4">
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">
                     Exercise Name *

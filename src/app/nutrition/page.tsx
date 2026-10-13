@@ -925,10 +925,10 @@ export default function NutritionPage() {
 
         {/* Modal: Select Food & Quantity */}
         {selectedMealForAdd && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden">
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-2xl h-[94dvh] sm:h-auto sm:max-h-[92vh] flex flex-col rounded-t-3xl sm:rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden">
               {/* Modal Header */}
-              <div className="p-5 border-b border-white/5 flex items-center justify-between">
+              <div className="p-4 sm:p-5 border-b border-white/5 flex items-center justify-between shrink-0 bg-charcoal-950/40">
                 <div>
                   <h3 className="text-lg font-black text-white">
                     Add Food to{" "}
@@ -1038,7 +1038,7 @@ export default function NutritionPage() {
               </div>
 
               {/* Food Selection Grid */}
-              <div className="p-4 overflow-y-auto flex-1 space-y-2.5">
+              <div className="p-3 sm:p-4 overflow-y-auto flex-1 min-h-0 space-y-2 sm:space-y-2.5">
                 {filteredFoods.length === 0 ? (
                   <div className="py-12 text-center space-y-2">
                     <p className="text-muted-foreground text-sm">No food items found matching your filters.</p>
@@ -1150,13 +1150,13 @@ export default function NutritionPage() {
 
               {/* Portion Selector & Add Footer */}
               {selectedFoodItem && (
-                <div className="p-4 bg-charcoal-950 border-t border-white/10 space-y-3 animate-in slide-in-from-bottom-2 duration-200">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-2">
-                    <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground truncate">
-                        Selected: <strong className="text-white">{selectedFoodItem.name}</strong> ({selectedFoodItem.tamil_name})
+                <div className="shrink-0 max-h-[50dvh] overflow-y-auto p-3 sm:p-4 bg-charcoal-950 border-t border-white/10 space-y-2.5 sm:space-y-3 animate-in slide-in-from-bottom-2 duration-200 pb-safe pb-4 shadow-2xl">
+                  <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-white font-bold truncate">
+                        Selected: <strong>{selectedFoodItem.name}</strong> <span className="text-[11px] text-lime-electric font-tamil font-normal">({selectedFoodItem.tamil_name})</span>
                       </p>
-                      <p className="text-[11px] text-lime-electric font-mono">
+                      <p className="text-[11px] text-muted-foreground font-mono truncate">
                         Base ({selectedFoodItem.serving_unit}): {selectedFoodItem.calories} kcal • {selectedFoodItem.protein_g}g Protein
                       </p>
                     </div>
@@ -1165,11 +1165,11 @@ export default function NutritionPage() {
                     <button
                       type="button"
                       onClick={() => setSelectedFoodItem(null)}
-                      className="text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-3 py-1 rounded-xl border border-rose-500/20 flex items-center gap-1 self-start sm:self-auto transition-colors"
+                      className="text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-2.5 py-1 rounded-xl border border-rose-500/20 flex items-center gap-1 shrink-0 transition-colors"
                       title="Unselect food"
                     >
                       <X className="h-3.5 w-3.5" />
-                      Unselect Food
+                      Unselect
                     </button>
                   </div>
 
@@ -1318,8 +1318,8 @@ export default function NutritionPage() {
                   </div>
 
                   {/* Calculated Preview & Confirm Button */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/5">
-                    <div className="text-xs font-mono text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-white/5">
+                    <div className="text-[11px] sm:text-xs font-mono text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-1">
                       <span>
                         Total: <strong className="text-white font-black">{Math.round(selectedFoodItem.calories * servingsMultiplier)} kcal</strong>
                       </span>
@@ -1345,20 +1345,22 @@ export default function NutritionPage() {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
                       <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => setSelectedFoodItem(null)}
-                        className="text-xs text-muted-foreground hover:text-white h-9"
+                        className="text-xs text-muted-foreground hover:text-white h-10 flex-1 sm:flex-none"
                       >
                         Cancel
                       </Button>
                       <Button
+                        type="button"
                         variant="default"
                         size="sm"
                         onClick={handleConfirmAddFood}
-                        className="font-black px-6 shadow-lime-sm h-9"
+                        className="font-black px-5 shadow-lime-sm h-10 flex-[2] sm:flex-none text-xs sm:text-sm bg-lime-electric text-charcoal-950 hover:bg-lime-400"
                       >
                         <Plus className="h-4 w-4 mr-1.5" />
                         Add {servingsMultiplier}× to Meal
@@ -1373,9 +1375,9 @@ export default function NutritionPage() {
 
         {/* Modal: Edit Daily Targets */}
         {isEditTargetsOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-lg rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden">
-              <div className="p-5 border-b border-white/5 flex items-center justify-between">
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-lg max-h-[94dvh] sm:max-h-[90vh] flex flex-col rounded-t-3xl sm:rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden">
+              <div className="p-4 sm:p-5 border-b border-white/5 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-lg font-black text-white flex items-center gap-2">
                     <Target className="h-5 w-5 text-lime-electric" />
@@ -1393,7 +1395,7 @@ export default function NutritionPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleSaveTargets} className="p-5 space-y-4">
+              <form onSubmit={handleSaveTargets} className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 min-h-0 pb-safe pb-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-bold text-muted-foreground block mb-1">
@@ -1520,9 +1522,9 @@ export default function NutritionPage() {
 
         {/* Modal: Add Custom Food */}
         {isAddCustomFoodOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full max-w-lg rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
-              <div className="p-5 border-b border-white/5 flex items-center justify-between">
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-charcoal-900 border border-white/10 shadow-2xl overflow-hidden max-h-[94dvh] sm:max-h-[92vh] flex flex-col">
+              <div className="p-4 sm:p-5 border-b border-white/5 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-lg font-black text-white flex items-center gap-2">
                     <PlusCircle className="h-5 w-5 text-lime-electric" />
@@ -1540,7 +1542,7 @@ export default function NutritionPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleSaveCustomFood} className="p-5 space-y-4 overflow-y-auto flex-1">
+              <form onSubmit={handleSaveCustomFood} className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 min-h-0 pb-safe pb-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2 sm:col-span-1">
                     <label className="text-xs font-bold text-muted-foreground block mb-1">

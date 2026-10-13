@@ -395,7 +395,7 @@ export default function ActiveWorkoutPage() {
 
         {/* Discard Workout Confirmation */}
         {showCancelConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-charcoal-950/85 backdrop-blur-md animate-in fade-in duration-200">
             <div className="w-full max-w-sm rounded-2xl bg-charcoal-900 border border-rose-500/30 p-6 text-center space-y-4">
               <div className="h-12 w-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
                 <AlertTriangle className="h-6 w-6" />
