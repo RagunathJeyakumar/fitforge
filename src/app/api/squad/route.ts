@@ -74,63 +74,121 @@ const PERSISTENCE_FILE_PATH = path.join(
 const TMP_FILE_PATH = path.join("/tmp", "squad_persistence.json");
 
 async function readPersistenceData(): Promise<SquadPersistenceData> {
-  let loadedData: SquadPersistenceData | null = null;
+  const loadedData: SquadPersistenceData = {
+    squads: Object.entries(PRESET_SQUADS).map(([code, preset]) => ({
+      id: preset.id,
+      name: preset.name,
+      description: preset.description,
+      invite_code: code,
+      created_by: "system",
+      created_at: "2026-01-01T00:00:00.000Z",
+    })),
+    memberships: [],
+    activities: [],
+  };
 
-  // 1. Try reading primary project file first so cross-worker/cross-tab updates are picked up
+  const mergeSquads = (sourceSquads?: StoredSquad[]) => {
+    if (!Array.isArray(sourceSquads)) return;
+    sourceSquads.forEach((sq) => {
+      if (!sq || !sq.id) return;
+      const codeUpper = sq.invite_code?.toUpperCase();
+      const existingIdx = loadedData.squads.findIndex(
+        (s) => s.id === sq.id || (codeUpper && s.invite_code?.toUpperCase() === codeUpper)
+      );
+      if (existingIdx >= 0) {
+        // Merge latest details from source
+        loadedData.squads[existingIdx] = {
+          ...loadedData.squads[existingIdx],
+          ...sq,
+        };
+      } else {
+        loadedData.squads.push(sq);
+      }
+    });
+  };
+
+  const mergeMemberships = (sourceMemberships?: StoredMembership[]) => {
+    if (!Array.isArray(sourceMemberships)) return;
+    sourceMemberships.forEach((m) => {
+      if (!m || !m.group_id || !m.user_id) return;
+      const existingIdx = loadedData.memberships.findIndex(
+        (existing) =>
+          (existing.id && m.id && existing.id === m.id) ||
+          (existing.group_id === m.group_id && existing.user_id === m.user_id)
+      );
+      if (existingIdx >= 0) {
+        const prevProf = loadedData.memberships[existingIdx].profile;
+        const newProf = m.profile;
+        loadedData.memberships[existingIdx] = {
+          ...loadedData.memberships[existingIdx],
+          ...m,
+          profile: (prevProf || newProf) ? {
+            full_name: newProf?.full_name || prevProf?.full_name || "Athlete",
+            avatar_url: newProf?.avatar_url || prevProf?.avatar_url,
+            email: newProf?.email || prevProf?.email || "",
+          } : undefined,
+        };
+      } else {
+        loadedData.memberships.push(m);
+      }
+    });
+  };
+
+  const mergeActivities = (sourceActivities?: ActivityFeedItem[]) => {
+    if (!Array.isArray(sourceActivities)) return;
+    const aIds = new Set(loadedData.activities.map((a) => a.id));
+    sourceActivities.forEach((act) => {
+      if (!act || !act.id) return;
+      if (!aIds.has(act.id)) {
+        loadedData.activities.push(act);
+        aIds.add(act.id);
+      }
+    });
+  };
+
+  // 1. Try reading primary project file first
   try {
     if (fs.existsSync(PERSISTENCE_FILE_PATH)) {
       const raw = await fs.promises.readFile(PERSISTENCE_FILE_PATH, "utf-8");
       const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.squads)) {
-        loadedData = parsed;
-        console.log("💾 [SQUAD-PERSIST:FILE-READ] Read primary file with activities:", loadedData?.activities?.length || 0);
+      if (parsed) {
+        mergeSquads(parsed.squads);
+        mergeMemberships(parsed.memberships);
+        mergeActivities(parsed.activities);
+        console.log("💾 [SQUAD-PERSIST:FILE-READ] Read primary file. Squads:", loadedData.squads.length, "Memberships:", loadedData.memberships.length);
       }
     }
   } catch (err: any) {
     console.warn("💾 [SQUAD-PERSIST:FILE-WARN] Primary file read skipped:", err?.message);
   }
 
-  // 2. Try /tmp fallback
-  if (!loadedData) {
-    try {
-      if (fs.existsSync(TMP_FILE_PATH)) {
-        const raw = await fs.promises.readFile(TMP_FILE_PATH, "utf-8");
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.squads)) {
-          loadedData = parsed;
-          console.log("💾 [SQUAD-PERSIST:TMP-READ] Read /tmp file with activities:", loadedData?.activities?.length || 0);
-        }
+  // 2. Read /tmp file and merge (crucial for serverless environments where process.cwd may be ephemeral)
+  try {
+    if (fs.existsSync(TMP_FILE_PATH)) {
+      const rawTmp = await fs.promises.readFile(TMP_FILE_PATH, "utf-8");
+      const parsedTmp = JSON.parse(rawTmp);
+      if (parsedTmp) {
+        mergeSquads(parsedTmp.squads);
+        mergeMemberships(parsedTmp.memberships);
+        mergeActivities(parsedTmp.activities);
+        console.log("💾 [SQUAD-PERSIST:TMP-READ] Read /tmp file. Squads:", loadedData.squads.length, "Memberships:", loadedData.memberships.length);
       }
-    } catch (err: any) {}
-  }
+    }
+  } catch (err: any) {}
 
-  // 3. Fall back to memory cache if reading from disk failed
-  if (!loadedData && globalThis.__FITFORGE_SQUAD_CACHE__) {
-    loadedData = globalThis.__FITFORGE_SQUAD_CACHE__;
-    console.log("💾 [SQUAD-PERSIST:CACHE-FALLBACK] Using memory cache with activities:", loadedData?.activities?.length || 0);
-  }
-
-  // 4. Default initialization if still null
-  if (!loadedData) {
-    loadedData = {
-      squads: Object.entries(PRESET_SQUADS).map(([code, preset]) => ({
-        id: preset.id,
-        name: preset.name,
-        description: preset.description,
-        invite_code: code,
-        created_by: "system",
-        created_at: "2026-01-01T00:00:00.000Z",
-      })),
-      memberships: [],
-      activities: [],
-    };
-    console.log("💾 [SQUAD-PERSIST:INIT] Initialized default preset squads (FORGE-884, DAWN-200, WARRIOR-777)");
+  // 3. Merge in-memory global cache (preserves live squads across requests in same process)
+  if (globalThis.__FITFORGE_SQUAD_CACHE__) {
+    const mem = globalThis.__FITFORGE_SQUAD_CACHE__;
+    mergeSquads(mem.squads);
+    mergeMemberships(mem.memberships);
+    mergeActivities(mem.activities);
+    console.log("💾 [SQUAD-PERSIST:CACHE-MERGE] Merged memory cache. Squads:", loadedData.squads.length, "Memberships:", loadedData.memberships.length);
   }
 
   // Ensure preset squads exist
   Object.entries(PRESET_SQUADS).forEach(([code, preset]) => {
-    if (!loadedData!.squads.some((s) => s.id === preset.id || s.invite_code?.toUpperCase() === code)) {
-      loadedData!.squads.push({
+    if (!loadedData.squads.some((s) => s.id === preset.id || s.invite_code?.toUpperCase() === code)) {
+      loadedData.squads.push({
         id: preset.id,
         name: preset.name,
         description: preset.description,
@@ -141,32 +199,10 @@ async function readPersistenceData(): Promise<SquadPersistenceData> {
     }
   });
 
-  if (!Array.isArray(loadedData.memberships)) loadedData.memberships = [];
-  if (!Array.isArray(loadedData.activities)) loadedData.activities = [];
-
-  // Merge any recent activities/memberships from in-memory cache to prevent data loss across requests
-  if (globalThis.__FITFORGE_SQUAD_CACHE__ && globalThis.__FITFORGE_SQUAD_CACHE__ !== loadedData) {
-    const actIds = new Set(loadedData.activities.map((a) => a.id));
-    globalThis.__FITFORGE_SQUAD_CACHE__.activities.forEach((memAct) => {
-      if (!actIds.has(memAct.id)) {
-        loadedData!.activities.unshift(memAct);
-        actIds.add(memAct.id);
-      }
-    });
-
-    const memIds = new Set(loadedData.memberships.map((m) => m.id));
-    globalThis.__FITFORGE_SQUAD_CACHE__.memberships.forEach((memM) => {
-      if (!memIds.has(memM.id)) {
-        loadedData!.memberships.push(memM);
-        memIds.add(memM.id);
-      }
-    });
-  }
-
-  // Deduplicate activities before storing in memory cache
+  // Deduplicate activities
   loadedData.activities = deduplicateActivityFeed(loadedData.activities);
 
-  // Store in global memory cache
+  // Store consolidated state in global memory cache
   globalThis.__FITFORGE_SQUAD_CACHE__ = loadedData;
   return loadedData;
 }
@@ -316,9 +352,13 @@ export async function GET(request: Request) {
     // Extract valid squads for this user
     const squads: FriendGroup[] = userMemberships
       .map((m) => {
-        const sq = pData.squads.find((s) => s.id === m.group_id);
+        const sq = pData.squads.find(
+          (s) => s.id === m.group_id || (s.invite_code && s.invite_code.toUpperCase() === m.group_id.toUpperCase())
+        );
         if (!sq) return null;
-        const count = pData.memberships.filter((mb) => mb.group_id === sq.id).length;
+        const count = pData.memberships.filter(
+          (mb) => mb.group_id === sq.id || (sq.invite_code && mb.group_id.toUpperCase() === sq.invite_code.toUpperCase())
+        ).length;
         return {
           id: sq.id,
           name: sq.name,
@@ -344,12 +384,20 @@ export async function GET(request: Request) {
       });
     }
 
-    // Select the active squad
+    // Select the active squad (match by id or invite_code)
     const activeSquad =
-      squads.find((s) => s.id === requestedGroupId) || squads[0];
+      squads.find(
+        (s) =>
+          s.id === requestedGroupId ||
+          (s.invite_code && requestedGroupId && s.invite_code.toUpperCase() === requestedGroupId.toUpperCase())
+      ) || squads[0];
 
     // Find ALL members for this active squad (User A + User B + ...)
-    const allSquadMemberships = pData.memberships.filter((m) => m.group_id === activeSquad.id);
+    const allSquadMemberships = pData.memberships.filter(
+      (m) =>
+        m.group_id === activeSquad.id ||
+        (activeSquad.invite_code && m.group_id.toUpperCase() === activeSquad.invite_code.toUpperCase())
+    );
     const memberUserIds = allSquadMemberships.map((m) => m.user_id).filter(Boolean);
 
     console.log(
@@ -580,33 +628,50 @@ export async function POST(request: Request) {
 
     // 1. JOIN SQUAD BY CODE
     if (action === "join") {
-      const code = (inviteCode || "").trim().toUpperCase();
-      console.log(`🌐 [API:POST:join] Attempting to join squad with code: "${code}". User:`, userId, userProfile?.full_name);
+      const rawCode = (inviteCode || "").trim();
+      const code = rawCode.toUpperCase();
+      const cleanCode = code.replace(/[\s\-_]/g, "");
+      console.log(`🌐 [API:POST:join] Attempting to join squad with code: "${code}" (clean: "${cleanCode}"). User:`, userId, userProfile?.full_name);
 
       if (!code) {
         return NextResponse.json({ success: false, error: "Invite code is required" }, { status: 400 });
       }
 
-      // Check persistence data first
-      let targetSquad = pData.squads.find((s) => s.invite_code?.toUpperCase() === code);
+      // Check persistence data first (exact or normalized match or ID match)
+      let targetSquad = pData.squads.find(
+        (s) =>
+          s.invite_code?.toUpperCase() === code ||
+          (s.invite_code && s.invite_code.replace(/[\s\-_]/g, "").toUpperCase() === cleanCode) ||
+          s.id === code
+      );
       console.log(
         "🌐 [API:POST:join] Persistence lookup result:",
         targetSquad ? `Found squad: "${targetSquad.name}" (${targetSquad.id})` : "Not found in local memory"
       );
 
       // Check preset squads
-      if (!targetSquad && PRESET_SQUADS[code]) {
-        const preset = PRESET_SQUADS[code];
-        targetSquad = {
-          id: preset.id,
-          name: preset.name,
-          description: preset.description,
-          invite_code: code,
-          created_by: "system",
-          created_at: new Date().toISOString(),
-        };
-        pData.squads.push(targetSquad);
-        console.log(`🌐 [API:POST:join] Instantiated preset squad: "${preset.name}" (${code})`);
+      if (!targetSquad) {
+        const presetKey = Object.keys(PRESET_SQUADS).find(
+          (k) => k === code || k.replace(/[\s\-_]/g, "").toUpperCase() === cleanCode
+        );
+        if (presetKey) {
+          const preset = PRESET_SQUADS[presetKey];
+          targetSquad = {
+            id: preset.id,
+            name: preset.name,
+            description: preset.description,
+            invite_code: presetKey,
+            created_by: "system",
+            created_at: "2026-01-01T00:00:00.000Z",
+          };
+          const existingSquadIdx = pData.squads.findIndex((s) => s.id === preset.id);
+          if (existingSquadIdx >= 0) {
+            pData.squads[existingSquadIdx] = targetSquad;
+          } else {
+            pData.squads.push(targetSquad);
+          }
+          console.log(`🌐 [API:POST:join] Instantiated preset squad: "${preset.name}" (${presetKey})`);
+        }
       }
 
       // Check Supabase if not found
@@ -620,7 +685,12 @@ export async function POST(request: Request) {
             const existing = await groupRes.json();
             if (existing && existing.length > 0 && existing[0]) {
               targetSquad = existing[0] as StoredSquad;
-              pData.squads.push(targetSquad);
+              const existingSquadIdx = pData.squads.findIndex((s) => s.id === targetSquad!.id);
+              if (existingSquadIdx >= 0) {
+                pData.squads[existingSquadIdx] = targetSquad;
+              } else {
+                pData.squads.push(targetSquad);
+              }
               console.log(`🌐 [API:POST:join] Found squad in Supabase DB: "${targetSquad.name}" (${targetSquad.id})`);
             }
           }
@@ -640,12 +710,12 @@ export async function POST(request: Request) {
         );
       }
 
-      // Ensure membership in persistence data
-      const existingMem = pData.memberships.find(
+      // Ensure membership in persistence data (upsert)
+      const existingMemIdx = pData.memberships.findIndex(
         (m) => m.group_id === targetSquad!.id && m.user_id === userId
       );
 
-      if (!existingMem) {
+      if (existingMemIdx < 0) {
         pData.memberships.push({
           id: `mem-${targetSquad.id}-${userId}`,
           group_id: targetSquad.id,
@@ -663,11 +733,12 @@ export async function POST(request: Request) {
         });
         console.log(`🌐 [API:POST:join] Inserted new membership for user "${userProfile?.full_name || userId}" into squad "${targetSquad.name}"`);
       } else {
+        const existingMem = pData.memberships[existingMemIdx];
         if (userProfile?.full_name) {
           existingMem.profile = {
             full_name: userProfile.full_name,
-            avatar_url: userProfile.avatar_url,
-            email: userProfile.email || "",
+            avatar_url: userProfile.avatar_url || existingMem.profile?.avatar_url,
+            email: userProfile.email || existingMem.profile?.email || "",
           };
         }
         if (initialVolume && Number(initialVolume) > (existingMem.weekly_volume_kg || 0)) {
@@ -695,7 +766,7 @@ export async function POST(request: Request) {
         console.log(`🌐 [API:POST:join] Attached ${recentActivities.length} recent activities to squad stream`);
       }
 
-      // Save to disk & memory
+      // Save to disk & memory immediately
       await writePersistenceData(pData);
 
       // Attempt Supabase insert in background
@@ -713,7 +784,9 @@ export async function POST(request: Request) {
       } catch (e) {}
 
       // Gather ALL members of targetSquad (both User A and User B!)
-      const allMembers = pData.memberships.filter((m) => m.group_id === targetSquad!.id);
+      const allMembers = pData.memberships.filter(
+        (m) => m.group_id === targetSquad!.id || (targetSquad!.invite_code && m.group_id.toUpperCase() === targetSquad!.invite_code.toUpperCase())
+      );
       const memberUserIds = allMembers.map((m) => m.user_id);
 
       console.log(
@@ -740,7 +813,7 @@ export async function POST(request: Request) {
       // Gather ALL activities for targetSquad
       const squadActivities: ActivityFeedItem[] = deduplicateActivityFeed(
         pData.activities
-          .filter((a) => a.group_id === targetSquad!.id || memberUserIds.includes(a.user_id))
+          .filter((a) => a.group_id === targetSquad!.id || (targetSquad!.invite_code && a.invite_code?.toUpperCase() === targetSquad!.invite_code.toUpperCase()) || memberUserIds.includes(a.user_id))
           .map((a) => ({
             ...a,
             timestamp: formatTimeAgo(a.created_at || (a as any).timestamp),
@@ -774,9 +847,22 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "Squad name is required" }, { status: 400 });
       }
 
-      const randomCode =
-        inviteCode?.trim().toUpperCase() ||
-        `FORGE-${Math.floor(100 + Math.random() * 900)}`;
+      // Collision avoidance: check presets and existing squads
+      const isCodeTaken = (c: string) => {
+        const clean = c.replace(/[\s\-_]/g, "").toUpperCase();
+        if (Object.keys(PRESET_SQUADS).some((pk) => pk.replace(/[\s\-_]/g, "").toUpperCase() === clean)) return true;
+        if (pData.squads.some((s) => (s.invite_code || "").replace(/[\s\-_]/g, "").toUpperCase() === clean)) return true;
+        return false;
+      };
+
+      let finalCode = (inviteCode || "").trim().toUpperCase();
+      if (!finalCode || isCodeTaken(finalCode)) {
+        let attempts = 0;
+        do {
+          finalCode = `FORGE-${Math.floor(100 + Math.random() * 900)}`;
+          attempts++;
+        } while (attempts < 50 && isCodeTaken(finalCode));
+      }
 
       const squadId =
         (groupId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(groupId))
@@ -785,18 +871,24 @@ export async function POST(request: Request) {
               ? (crypto as any).randomUUID()
               : `00000000-0000-0000-0000-${Date.now().toString().slice(-12).padStart(12, "0")}`);
 
-      console.log(`🌐 [API:POST:create] Creating squad "${squadName}" with code "${randomCode}". Creator:`, userId);
+      console.log(`🌐 [API:POST:create] Creating squad "${squadName}" with unique code "${finalCode}". Creator:`, userId);
 
       const newSquad: StoredSquad = {
         id: squadId,
         name: squadName,
         description: description || "Private squad for tracking volume and nutrition fuel together.",
-        invite_code: randomCode,
+        invite_code: finalCode,
         created_by: userId,
         created_at: new Date().toISOString(),
       };
 
-      pData.squads.push(newSquad);
+      // Upsert squad
+      const existingSquadIdx = pData.squads.findIndex((s) => s.id === squadId || s.invite_code?.toUpperCase() === finalCode);
+      if (existingSquadIdx >= 0) {
+        pData.squads[existingSquadIdx] = newSquad;
+      } else {
+        pData.squads.push(newSquad);
+      }
 
       // Founder membership
       const founderMem: StoredMembership = {
@@ -815,7 +907,12 @@ export async function POST(request: Request) {
         streak_weeks: 1,
       };
 
-      pData.memberships.push(founderMem);
+      const existingMemIdx = pData.memberships.findIndex((m) => m.group_id === squadId && m.user_id === userId);
+      if (existingMemIdx >= 0) {
+        pData.memberships[existingMemIdx] = founderMem;
+      } else {
+        pData.memberships.push(founderMem);
+      }
 
       // If founder has recent activities, tag and add them
       if (Array.isArray(recentActivities)) {
@@ -824,7 +921,7 @@ export async function POST(request: Request) {
             pData.activities.unshift({
               ...act,
               group_id: squadId,
-              invite_code: randomCode,
+              invite_code: finalCode,
               created_at: act.created_at || new Date().toISOString(),
               is_real: true,
             });
@@ -832,6 +929,7 @@ export async function POST(request: Request) {
         });
       }
 
+      // Persist to memory and disk immediately
       await writePersistenceData(pData);
 
       // Attempt Supabase insert in background
@@ -843,7 +941,7 @@ export async function POST(request: Request) {
             id: squadId,
             name: squadName,
             description: newSquad.description,
-            invite_code: randomCode,
+            invite_code: finalCode,
             created_by: userId,
           }),
         });
@@ -875,7 +973,7 @@ export async function POST(request: Request) {
         joined_at: founderMem.joined_at,
       };
 
-      console.log(`🌐 [API:POST:create] Successfully created squad "${squadName}" (${randomCode}). Persisted.`);
+      console.log(`🌐 [API:POST:create] Successfully created squad "${squadName}" (${finalCode}). Persisted.`);
 
       return NextResponse.json({
         success: true,
@@ -884,7 +982,7 @@ export async function POST(request: Request) {
           id: squadId,
           name: squadName,
           description: newSquad.description,
-          invite_code: randomCode,
+          invite_code: finalCode,
           created_by: userId,
           members_count: 1,
           created_at: newSquad.created_at,
@@ -892,7 +990,7 @@ export async function POST(request: Request) {
         },
         members: [founderMemberFormatted],
         activities: pData.activities
-          .filter((a) => a.group_id === squadId)
+          .filter((a) => a.group_id === squadId || (finalCode && a.invite_code?.toUpperCase() === finalCode))
           .map((a) => ({
             ...a,
             timestamp: formatTimeAgo(a.created_at || (a as any).timestamp),
@@ -942,7 +1040,8 @@ export async function POST(request: Request) {
       let targetSquad = pData.squads.find(
         (s) =>
           (groupId && s.id === groupId) ||
-          (inviteCode && s.invite_code?.toUpperCase() === inviteCode?.toUpperCase())
+          (inviteCode && s.invite_code?.toUpperCase() === inviteCode?.toUpperCase()) ||
+          (inviteCode && s.invite_code?.replace(/[\s\-_]/g, "").toUpperCase() === inviteCode?.replace(/[\s\-_]/g, "").toUpperCase())
       );
 
       if (!targetSquad) {
@@ -950,10 +1049,6 @@ export async function POST(request: Request) {
         if (userMem) {
           targetSquad = pData.squads.find((s) => s.id === userMem.group_id);
         }
-      }
-
-      if (!targetSquad && pData.squads.length > 0) {
-        targetSquad = pData.squads[0];
       }
 
       const targetGroupId = targetSquad?.id || groupId;

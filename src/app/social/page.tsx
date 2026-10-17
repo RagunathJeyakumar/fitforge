@@ -53,6 +53,9 @@ export default function SocialPage() {
   const [groupDescInput, setGroupDescInput] = useState("");
   const [feedFilter, setFeedFilter] = useState<FeedFilter>("all");
   const [isJoining, setIsJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // Determine current active group
   const currentGroup =
@@ -93,27 +96,48 @@ export default function SocialPage() {
     console.log("⚡ [UI:SOCIAL:JOIN] handleJoin clicked with code:", code, "user:", user?.id, user?.full_name);
     if (!code) return;
     setIsJoining(true);
+    setJoinError(null);
     try {
       const ok = await joinGroupByCode(code);
       console.log("⚡ [UI:SOCIAL:JOIN] joinGroupByCode finished. Success:", ok);
       if (ok) {
         setShowJoinModal(false);
         setInviteCodeInput("");
+        setJoinError(null);
+      } else {
+        setJoinError(`Squad code "${code}" not found. Verify the code with your founder or create a new squad.`);
       }
+    } catch (err: any) {
+      console.error("⚡ [UI:SOCIAL:JOIN] Error joining squad:", err);
+      setJoinError(err?.message || "Failed to join squad");
     } finally {
       setIsJoining(false);
     }
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupNameInput.trim()) return;
     console.log("⚡ [UI:SOCIAL:CREATE] User submitted Create Squad form:", groupNameInput, groupDescInput);
-    const newGrp = createGroup(groupNameInput.trim(), groupDescInput.trim());
-    setActiveGroupId(newGrp.id);
-    setShowCreateModal(false);
-    setGroupNameInput("");
-    setGroupDescInput("");
+    setIsCreating(true);
+    setCreateError(null);
+    try {
+      const newGrp = await createGroup(groupNameInput.trim(), groupDescInput.trim());
+      if (newGrp) {
+        setActiveGroupId(newGrp.id);
+        setShowCreateModal(false);
+        setGroupNameInput("");
+        setGroupDescInput("");
+        setCreateError(null);
+      } else {
+        setCreateError("Could not create squad. Please try again.");
+      }
+    } catch (err: any) {
+      console.error("⚡ [UI:SOCIAL:CREATE] Failed to create squad:", err);
+      setCreateError(err?.message || "Failed to create squad");
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const handleLeaveCurrent = () => {
@@ -1094,9 +1118,18 @@ export default function SocialPage() {
                   required
                   placeholder="e.g. FORGE-884"
                   value={inviteCodeInput}
-                  onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    setInviteCodeInput(e.target.value.toUpperCase());
+                    if (joinError) setJoinError(null);
+                  }}
                   className="w-full bg-charcoal-950 border border-white/10 rounded-xl px-4 py-3 text-center text-lg font-mono font-black text-lime-electric tracking-widest focus:outline-none focus:border-lime-electric uppercase"
                 />
+
+                {joinError && (
+                  <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 font-medium">
+                    {joinError}
+                  </div>
+                )}
 
                 {/* Quick Join Presets */}
                 <div className="space-y-1.5">
@@ -1106,6 +1139,7 @@ export default function SocialPage() {
                   <div className="flex flex-col gap-1.5">
                     <button
                       type="button"
+                      disabled={isJoining}
                       onClick={() => handleJoin("FORGE-884")}
                       className="text-left text-xs p-2.5 rounded-xl bg-charcoal-950 hover:bg-charcoal-800 border border-white/5 text-muted-foreground hover:text-white transition-all flex items-center justify-between"
                     >
@@ -1114,6 +1148,7 @@ export default function SocialPage() {
                     </button>
                     <button
                       type="button"
+                      disabled={isJoining}
                       onClick={() => handleJoin("DAWN-200")}
                       className="text-left text-xs p-2.5 rounded-xl bg-charcoal-950 hover:bg-charcoal-800 border border-white/5 text-muted-foreground hover:text-white transition-all flex items-center justify-between"
                     >
@@ -1122,6 +1157,7 @@ export default function SocialPage() {
                     </button>
                     <button
                       type="button"
+                      disabled={isJoining}
                       onClick={() => handleJoin("WARRIOR-777")}
                       className="text-left text-xs p-2.5 rounded-xl bg-charcoal-950 hover:bg-charcoal-800 border border-white/5 text-muted-foreground hover:text-white transition-all flex items-center justify-between"
                     >
@@ -1135,12 +1171,15 @@ export default function SocialPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setShowJoinModal(false)}
+                    onClick={() => {
+                      setShowJoinModal(false);
+                      setJoinError(null);
+                    }}
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" variant="default" className="font-bold shadow-lime-sm">
-                    Join Squad
+                  <Button type="submit" variant="default" disabled={isJoining} className="font-bold shadow-lime-sm">
+                    {isJoining ? "Joining Squad..." : "Join Squad"}
                   </Button>
                 </div>
               </form>
@@ -1158,6 +1197,12 @@ export default function SocialPage() {
               </p>
 
               <form onSubmit={handleCreate} className="space-y-4">
+                {createError && (
+                  <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 font-medium">
+                    {createError}
+                  </div>
+                )}
+
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">
                     Squad Name *
@@ -1167,7 +1212,10 @@ export default function SocialPage() {
                     required
                     placeholder="e.g. 5AM Iron Club"
                     value={groupNameInput}
-                    onChange={(e) => setGroupNameInput(e.target.value)}
+                    onChange={(e) => {
+                      setGroupNameInput(e.target.value);
+                      if (createError) setCreateError(null);
+                    }}
                     className="w-full bg-charcoal-950 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-lime-electric"
                   />
                 </div>
@@ -1189,12 +1237,15 @@ export default function SocialPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setShowCreateModal(false)}
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setCreateError(null);
+                    }}
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" variant="default" className="font-bold shadow-lime-sm">
-                    Create & Generate Code
+                  <Button type="submit" variant="default" disabled={isCreating} className="font-bold shadow-lime-sm">
+                    {isCreating ? "Creating Squad..." : "Create & Generate Code"}
                   </Button>
                 </div>
               </form>

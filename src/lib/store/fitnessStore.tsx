@@ -104,7 +104,7 @@ interface FitnessContextType {
   groupMembers: GroupMember[];
   challenges: GroupChallenge[];
   activityFeed: ActivityFeedItem[];
-  createGroup: (name: string, description: string) => FriendGroup;
+  createGroup: (name: string, description: string) => Promise<FriendGroup | null>;
   joinGroupByCode: (code: string) => Promise<boolean> | boolean;
   leaveGroup: (groupId: string) => void;
   cheerActivity: (activityId: string) => void;
@@ -1595,77 +1595,25 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [user?.id, getAuthHeaders]);
 
-  const createGroup = useCallback((name: string, description: string): FriendGroup => {
-    const code = `FORGE-${Math.floor(100 + Math.random() * 900)}`;
+  const createGroup = useCallback(async (name: string, description: string): Promise<FriendGroup | null> => {
+    const liveVolume = completedSessions.reduce((acc, s) => acc + (s.total_volume_kg || 0), 0);
+    const currentUserId =
+      user?.id ||
+      (typeof window !== "undefined" ? localStorage.getItem("fitforge_guest_uid") : null) ||
+      "user-current";
+    const currentUserName = user?.full_name || (typeof window !== "undefined" ? localStorage.getItem("fitforge_guest_name") : null) || "Athlete";
+
     const newGroupId =
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
         : `00000000-0000-4000-8000-${Date.now().toString().slice(-12).padStart(12, "0")}`;
-    const liveVolume = completedSessions.reduce((acc, s) => acc + (s.total_volume_kg || 0), 0);
 
-    console.log("⚡ [STORE:CREATE] createGroup called. Name:", name, "Code:", code, "User:", user?.id, user?.full_name);
-
-    const newGroup: FriendGroup = {
-      id: newGroupId,
-      name: name.trim(),
-      description: description.trim() || "Private training squad.",
-      invite_code: code,
-      created_by: user?.id || "user-current",
-      members_count: 1,
-      is_user_admin: true,
-      created_at: new Date().toISOString(),
-    };
-
-    setGroups((prev) => {
-      const updated = [newGroup, ...prev.filter((g) => g.id !== newGroup.id)];
-      localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(updated));
-      return updated;
-    });
-
-    const founderMember: GroupMember = {
-      id: `mem-${newGroupId}-${user?.id || "self"}`,
-      group_id: newGroup.id,
-      user_id: user?.id || "user-current",
-      role: "admin",
-      user_profile: {
-        full_name: user?.full_name || "Athlete",
-        avatar_url: user?.avatar_url,
-        email: user?.email || "",
-      },
-      weekly_workouts_count: completedSessions.length || 1,
-      weekly_volume_kg: liveVolume,
-      streak_weeks: 1,
-      joined_at: new Date().toISOString(),
-    };
-    setGroupMembers((prev) => {
-      const updated = [founderMember, ...prev.filter((m) => m.group_id !== newGroup.id)];
-      localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
-      return updated;
-    });
-
-    const newChallenge: GroupChallenge = {
-      id: `ch-${Date.now()}`,
-      group_id: newGroup.id,
-      title: "Squad 50,000kg Volume Milestone",
-      description: "Work together to hit 50,000kg lifted across all squad members.",
-      challenge_type: "total_volume",
-      target_value: 50000,
-      unit: "kg",
-      start_date: new Date().toISOString().split("T")[0],
-      end_date: "2026-11-30",
-      user_progress: liveVolume,
-      created_at: new Date().toISOString(),
-    };
-    setChallenges((prev) => {
-      const updated = [newChallenge, ...prev];
-      localStorage.setItem(STORAGE_KEYS.CHALLENGES, JSON.stringify(updated));
-      return updated;
-    });
+    console.log("⚡ [STORE:CREATE] createGroup called. Name:", name, "User:", currentUserId, currentUserName);
 
     const recentActivities = completedSessions.slice(0, 3).map((s) => ({
       id: `sess-${s.id}-${Date.now()}`,
-      user_id: user?.id || "user-current",
-      user_name: user?.full_name || "Athlete",
+      user_id: currentUserId,
+      user_name: currentUserName,
       user_avatar: user?.avatar_url,
       action_type: (s.pr_count && s.pr_count > 0 ? "pr_broken" : "workout_completed") as any,
       workout_name: s.name,
@@ -1678,50 +1626,121 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       is_real: true,
     }));
 
-    // Sync to DB & API
-    if (user?.id) {
-      getAuthHeaders().then((headers) => {
-        fetch("/api/squad", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            action: "create",
-            userId: user.id,
-            name: name.trim(),
-            description: description.trim(),
-            inviteCode: code,
-            groupId: newGroupId,
-            initialVolume: liveVolume,
-            initialWorkoutsCount: completedSessions.length || 1,
-            recentActivities,
-            userProfile: {
-              full_name: user.full_name,
-              avatar_url: user.avatar_url,
-              email: user.email,
-            },
-          }),
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            console.log("⚡ [STORE:CREATE] Server response:", d);
-            if (d.success && d.squad) {
-              setGroups((prev) => [d.squad, ...prev.filter((g) => g.id !== newGroupId && g.id !== d.squad.id)]);
-              if (d.members) setGroupMembers(d.members);
-              if (d.activities) {
-                const deduped = deduplicateActivityFeed(d.activities);
-                setActivityFeed(deduped);
-                localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(deduped));
-              }
-              localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify([d.squad]));
-              if (d.members) localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(d.members));
-              console.log("⚡ [STORE:CREATE] Updated state with server squad:", d.squad.name, "Code:", d.squad.invite_code);
-            }
-          })
-          .catch((e) => console.warn("⚡ [STORE:CREATE] Squad create sync error:", e));
-      });
-    }
+    try {
+      const authHeaders = await getAuthHeaders();
+      console.log("⚡ [STORE:CREATE] Sending POST /api/squad with action: create...");
 
-    return newGroup;
+      const res = await fetch("/api/squad", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          action: "create",
+          userId: currentUserId,
+          name: name.trim(),
+          description: description.trim(),
+          groupId: newGroupId,
+          initialVolume: liveVolume,
+          initialWorkoutsCount: completedSessions.length || 1,
+          recentActivities,
+          userProfile: {
+            full_name: currentUserName,
+            avatar_url: user?.avatar_url,
+            email: user?.email || "",
+          },
+        }),
+      });
+
+      const d = await res.json();
+      console.log("⚡ [STORE:CREATE] Server response:", d);
+
+      if (d.success && d.squad) {
+        const createdSquad: FriendGroup = d.squad;
+
+        setGroups((prev) => {
+          const updated = [createdSquad, ...prev.filter((g) => g.id !== createdSquad.id && g.id !== newGroupId)];
+          localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(updated));
+          return updated;
+        });
+
+        if (d.members) {
+          setGroupMembers(d.members);
+          localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(d.members));
+        }
+
+        if (d.activities) {
+          const deduped = deduplicateActivityFeed(d.activities);
+          setActivityFeed(deduped);
+          localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(deduped));
+        }
+
+        const newChallenge: GroupChallenge = {
+          id: `ch-${createdSquad.id}`,
+          group_id: createdSquad.id,
+          title: "Squad 50,000kg Volume Milestone",
+          description: "Work together to hit 50,000kg lifted across all squad members.",
+          challenge_type: "total_volume",
+          target_value: 50000,
+          unit: "kg",
+          start_date: new Date().toISOString().split("T")[0],
+          end_date: "2026-11-30",
+          user_progress: liveVolume,
+          created_at: new Date().toISOString(),
+        };
+
+        setChallenges((prev) => {
+          const updated = [newChallenge, ...prev.filter((c) => c.group_id !== createdSquad.id)];
+          localStorage.setItem(STORAGE_KEYS.CHALLENGES, JSON.stringify(updated));
+          return updated;
+        });
+
+        return createdSquad;
+      } else {
+        throw new Error(d.error || "Failed to create squad on server");
+      }
+    } catch (err: any) {
+      console.warn("⚡ [STORE:CREATE] Network or server error, using fallback:", err?.message);
+      const fallbackCode = `FORGE-${Math.floor(100 + Math.random() * 900)}`;
+      const fallbackGroup: FriendGroup = {
+        id: newGroupId,
+        name: name.trim(),
+        description: description.trim() || "Private training squad.",
+        invite_code: fallbackCode,
+        created_by: currentUserId,
+        members_count: 1,
+        is_user_admin: true,
+        created_at: new Date().toISOString(),
+      };
+
+      setGroups((prev) => {
+        const updated = [fallbackGroup, ...prev.filter((g) => g.id !== fallbackGroup.id)];
+        localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(updated));
+        return updated;
+      });
+
+      const founderMember: GroupMember = {
+        id: `mem-${newGroupId}-${currentUserId}`,
+        group_id: fallbackGroup.id,
+        user_id: currentUserId,
+        role: "admin",
+        user_profile: {
+          full_name: currentUserName,
+          avatar_url: user?.avatar_url,
+          email: user?.email || "",
+        },
+        weekly_workouts_count: completedSessions.length || 1,
+        weekly_volume_kg: liveVolume,
+        streak_weeks: 1,
+        joined_at: new Date().toISOString(),
+      };
+
+      setGroupMembers((prev) => {
+        const updated = [founderMember, ...prev.filter((m) => m.group_id !== fallbackGroup.id)];
+        localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
+        return updated;
+      });
+
+      return fallbackGroup;
+    }
   }, [user, completedSessions, getAuthHeaders]);
 
   const joinGroupByCode = useCallback(async (code: string): Promise<boolean> => {
