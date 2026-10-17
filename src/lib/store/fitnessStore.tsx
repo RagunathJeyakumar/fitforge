@@ -390,9 +390,10 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
             return parsed.filter(
               (i: any) =>
                 i &&
-                i.is_real &&
-                !i.id?.startsWith("act-food-") &&
-                !i.id?.startsWith("act-")
+                i.is_real === true &&
+                !i.user_id?.startsWith("user-elena") &&
+                !i.user_id?.startsWith("user-liam") &&
+                !i.user_id?.startsWith("user-dave")
             );
           }
         }
@@ -770,12 +771,16 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
 
           if (inAnySquad) {
-            const localOnlyReal = (activityFeed || []).filter(
-              (item: ActivityFeedItem) => item.is_real && !realCloudActivities.some((r) => r.id === item.id)
-            );
-            const allReal = [...localOnlyReal, ...realCloudActivities];
-            setActivityFeed(allReal);
-            localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(allReal));
+            // Safely merge cloud activities without clobbering other squad members' activities
+            setActivityFeed((prev) => {
+              const cloudIds = new Set(realCloudActivities.map((r) => r.id));
+              const combined = [
+                ...realCloudActivities,
+                ...prev.filter((item) => !cloudIds.has(item.id) && item.is_real),
+              ];
+              localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(combined));
+              return combined;
+            });
           } else {
             setActivityFeed([]);
             localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify([]));
@@ -1399,6 +1404,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       has_cheered: false,
       is_real: true,
       timestamp: "Just now",
+      created_at: finishedSession.end_time || new Date().toISOString(),
     };
     // Only publish to squad activity feed if user is part of a squad!
     if (groups.length > 0) {
@@ -1598,10 +1604,21 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
             console.log("⚡ [STORE:REFRESH] Updating live squad members:", data.members?.map((m: any) => m.user_profile?.full_name), "activities count:", data.activities?.length);
             setGroups(data.squads);
             setGroupMembers(data.members || []);
-            setActivityFeed(data.activities || []);
+            setActivityFeed((prev) => {
+              const serverActivities: ActivityFeedItem[] = data.activities || [];
+              const serverIds = new Set(serverActivities.map((a) => a.id));
+              // Retain local real activities (like newly logged food or workouts) that server hasn't returned yet
+              const localUnsynced = prev.filter((p) => p.is_real && !serverIds.has(p.id));
+              const combined = [...localUnsynced, ...serverActivities].sort((a, b) => {
+                const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                return timeB - timeA;
+              });
+              localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(combined));
+              return combined;
+            });
             localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(data.squads));
             localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(data.members || []));
-            localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(data.activities || []));
           }
         }
       }
@@ -2002,7 +2019,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       const mealFeedItem: ActivityFeedItem = {
-        id: `act-meal-${Date.now()}`,
+        id: `meal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         user_id: user?.id || "user-current",
         user_name: user?.full_name || "Athlete",
         user_avatar: user?.avatar_url,
@@ -2021,6 +2038,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         has_cheered: false,
         is_real: true,
         timestamp: "Just now",
+        created_at: loggedAt,
       };
 
       // Only publish to squad activity feed if user is part of a squad!

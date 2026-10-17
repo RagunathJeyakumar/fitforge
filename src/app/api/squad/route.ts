@@ -73,34 +73,23 @@ const PERSISTENCE_FILE_PATH = path.join(
 const TMP_FILE_PATH = path.join("/tmp", "squad_persistence.json");
 
 async function readPersistenceData(): Promise<SquadPersistenceData> {
-  // 1. If in-memory cache exists, use it as primary ground truth
-  if (globalThis.__FITFORGE_SQUAD_CACHE__) {
-    console.log(
-      "💾 [SQUAD-PERSIST:CACHE-HIT] Loaded from globalThis memory cache.",
-      `Squads: ${globalThis.__FITFORGE_SQUAD_CACHE__.squads.length},`,
-      `Memberships: ${globalThis.__FITFORGE_SQUAD_CACHE__.memberships.length},`,
-      `Activities: ${globalThis.__FITFORGE_SQUAD_CACHE__.activities.length}`
-    );
-    return globalThis.__FITFORGE_SQUAD_CACHE__;
-  }
-
   let loadedData: SquadPersistenceData | null = null;
 
-  // 2. Try primary project file path (works locally and on persistent disks)
+  // 1. Try reading primary project file first so cross-worker/cross-tab updates are picked up
   try {
     if (fs.existsSync(PERSISTENCE_FILE_PATH)) {
       const raw = await fs.promises.readFile(PERSISTENCE_FILE_PATH, "utf-8");
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.squads)) {
         loadedData = parsed;
-        console.log("💾 [SQUAD-PERSIST:FILE-READ] Successfully read primary file:", PERSISTENCE_FILE_PATH);
+        console.log("💾 [SQUAD-PERSIST:FILE-READ] Read primary file with activities:", loadedData?.activities?.length || 0);
       }
     }
   } catch (err: any) {
     console.warn("💾 [SQUAD-PERSIST:FILE-WARN] Primary file read skipped:", err?.message);
   }
 
-  // 3. Try /tmp fallback (works on serverless platforms like Vercel)
+  // 2. Try /tmp fallback
   if (!loadedData) {
     try {
       if (fs.existsSync(TMP_FILE_PATH)) {
@@ -108,15 +97,19 @@ async function readPersistenceData(): Promise<SquadPersistenceData> {
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.squads)) {
           loadedData = parsed;
-          console.log("💾 [SQUAD-PERSIST:TMP-READ] Successfully read /tmp file:", TMP_FILE_PATH);
+          console.log("💾 [SQUAD-PERSIST:TMP-READ] Read /tmp file with activities:", loadedData?.activities?.length || 0);
         }
       }
-    } catch (err: any) {
-      console.warn("💾 [SQUAD-PERSIST:TMP-WARN] /tmp read skipped:", err?.message);
-    }
+    } catch (err: any) {}
   }
 
-  // 4. Default initialization if no data exists
+  // 3. Fall back to memory cache if reading from disk failed
+  if (!loadedData && globalThis.__FITFORGE_SQUAD_CACHE__) {
+    loadedData = globalThis.__FITFORGE_SQUAD_CACHE__;
+    console.log("💾 [SQUAD-PERSIST:CACHE-FALLBACK] Using memory cache with activities:", loadedData?.activities?.length || 0);
+  }
+
+  // 4. Default initialization if still null
   if (!loadedData) {
     loadedData = {
       squads: Object.entries(PRESET_SQUADS).map(([code, preset]) => ({
@@ -149,6 +142,25 @@ async function readPersistenceData(): Promise<SquadPersistenceData> {
 
   if (!Array.isArray(loadedData.memberships)) loadedData.memberships = [];
   if (!Array.isArray(loadedData.activities)) loadedData.activities = [];
+
+  // Merge any recent activities/memberships from in-memory cache to prevent data loss across requests
+  if (globalThis.__FITFORGE_SQUAD_CACHE__ && globalThis.__FITFORGE_SQUAD_CACHE__ !== loadedData) {
+    const actIds = new Set(loadedData.activities.map((a) => a.id));
+    globalThis.__FITFORGE_SQUAD_CACHE__.activities.forEach((memAct) => {
+      if (!actIds.has(memAct.id)) {
+        loadedData!.activities.unshift(memAct);
+        actIds.add(memAct.id);
+      }
+    });
+
+    const memIds = new Set(loadedData.memberships.map((m) => m.id));
+    globalThis.__FITFORGE_SQUAD_CACHE__.memberships.forEach((memM) => {
+      if (!memIds.has(memM.id)) {
+        loadedData!.memberships.push(memM);
+        memIds.add(memM.id);
+      }
+    });
+  }
 
   // Store in global memory cache
   globalThis.__FITFORGE_SQUAD_CACHE__ = loadedData;
@@ -458,10 +470,15 @@ export async function GET(request: Request) {
 
     // Add persisted activities for this squad and its members
     pData.activities.forEach((act) => {
-      if (
-        (act.group_id && act.group_id === activeSquad.id) ||
-        memberUserIds.includes(act.user_id)
-      ) {
+      const matchesGroup = Boolean(act.group_id && act.group_id === activeSquad.id);
+      const matchesCode = Boolean(
+        act.invite_code &&
+        activeSquad.invite_code &&
+        act.invite_code.toUpperCase() === activeSquad.invite_code.toUpperCase()
+      );
+      const matchesMember = memberUserIds.includes(act.user_id);
+
+      if (matchesGroup || matchesCode || matchesMember) {
         if (!activities.some((a) => a.id === act.id)) {
           activities.push({
             ...act,
@@ -893,44 +910,97 @@ export async function POST(request: Request) {
 
     // 4. LOG ACTIVITY (workouts + meals)
     if (action === "log_activity" && activity) {
-      // Find user's squad
-      const userMem = pData.memberships.find(
-        (m) => (groupId ? m.group_id === groupId : true) && m.user_id === userId
-      );
-      const targetGroupId = groupId || userMem?.group_id;
-      const targetSquad = pData.squads.find((s) => s.id === targetGroupId);
+      console.log("🌐 [API:POST:log_activity] Incoming activity payload:", {
+        action_type: activity.action_type,
+        food_name: activity.food_name,
+        workout_name: activity.workout_name,
+        userId,
+        groupId,
+        inviteCode,
+      });
 
-      console.log(`🌐 [API:POST:log_activity] User ${userId} logging ${activity.action_type} for squad ${targetGroupId} (${targetSquad?.invite_code})`);
+      // Find target squad by groupId, inviteCode, or user's existing membership
+      let targetSquad = pData.squads.find(
+        (s) =>
+          (groupId && s.id === groupId) ||
+          (inviteCode && s.invite_code?.toUpperCase() === inviteCode?.toUpperCase())
+      );
+
+      if (!targetSquad) {
+        const userMem = pData.memberships.find((m) => m.user_id === userId);
+        if (userMem) {
+          targetSquad = pData.squads.find((s) => s.id === userMem.group_id);
+        }
+      }
+
+      if (!targetSquad && pData.squads.length > 0) {
+        targetSquad = pData.squads[0];
+      }
+
+      const targetGroupId = targetSquad?.id || groupId;
+      const targetInviteCode = targetSquad?.invite_code || inviteCode;
+
+      console.log(`🌐 [API:POST:log_activity] User ${userId} logging ${activity.action_type} for squad ${targetGroupId} (${targetInviteCode})`);
+
+      // Ensure user membership exists for this squad
+      if (targetGroupId) {
+        let userMem = pData.memberships.find(
+          (m) => m.group_id === targetGroupId && m.user_id === userId
+        );
+        if (!userMem) {
+          pData.memberships.push({
+            id: `mem-${targetGroupId}-${userId}`,
+            group_id: targetGroupId,
+            user_id: userId,
+            role: "member",
+            joined_at: new Date().toISOString(),
+            profile: {
+              full_name: activity.user_name || userProfile?.full_name || "Athlete",
+              avatar_url: activity.user_avatar || userProfile?.avatar_url,
+              email: userProfile?.email || "",
+            },
+            weekly_volume_kg: Number(volume) || 0,
+            weekly_workouts_count: workouts_increment ? Number(workouts_increment) : 0,
+            streak_weeks: 1,
+          });
+          console.log(`🌐 [API:POST:log_activity] Registered membership for user "${userId}" in squad "${targetGroupId}"`);
+        } else {
+          if (volume) {
+            userMem.weekly_volume_kg = (userMem.weekly_volume_kg || 0) + Math.round(Number(volume));
+          }
+          if (workouts_increment) {
+            userMem.weekly_workouts_count = (userMem.weekly_workouts_count || 0) + Number(workouts_increment);
+          }
+        }
+      }
 
       const newAct: ActivityFeedItem & { group_id?: string; invite_code?: string; created_at?: string } = {
         ...activity,
-        id: activity.id || `act-${Date.now()}`,
+        id: activity.id || `meal-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         user_id: userId,
         group_id: targetGroupId,
-        invite_code: inviteCode || targetSquad?.invite_code,
+        invite_code: targetInviteCode,
         created_at: activity.created_at || new Date().toISOString(),
         timestamp: "Just now",
         is_real: true,
       };
 
-      pData.activities.unshift(newAct);
+      // Deduplicate: replace existing by ID or unshift
+      const existingIdx = pData.activities.findIndex((a) => a.id === newAct.id);
+      if (existingIdx >= 0) {
+        pData.activities[existingIdx] = newAct;
+      } else {
+        pData.activities.unshift(newAct);
+      }
 
       // Keep recent 300 activities
       if (pData.activities.length > 300) {
         pData.activities.pop();
       }
 
-      // Update user membership volume and workouts
-      if (userMem) {
-        if (volume) {
-          userMem.weekly_volume_kg = (userMem.weekly_volume_kg || 0) + Math.round(Number(volume));
-        }
-        if (workouts_increment) {
-          userMem.weekly_workouts_count = (userMem.weekly_workouts_count || 0) + Number(workouts_increment);
-        }
-      }
-
       await writePersistenceData(pData);
+
+      console.log(`🌐 [API:POST:log_activity] Successfully stored ${newAct.action_type} "${newAct.food_name || newAct.workout_name}". Total squad activities: ${pData.activities.length}`);
 
       return NextResponse.json({
         success: true,
