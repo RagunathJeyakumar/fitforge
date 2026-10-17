@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { getSupabaseConfig } from "@/lib/supabase/config";
 import { ActivityFeedItem, FriendGroup, GroupMember, MealType } from "@/lib/types";
+import { deduplicateActivityFeed } from "@/lib/utils";
 
 // Standard preset squads available for lifters
 const PRESET_SQUADS: Record<string, { id: string; name: string; description: string }> = {
@@ -162,12 +163,18 @@ async function readPersistenceData(): Promise<SquadPersistenceData> {
     });
   }
 
+  // Deduplicate activities before storing in memory cache
+  loadedData.activities = deduplicateActivityFeed(loadedData.activities);
+
   // Store in global memory cache
   globalThis.__FITFORGE_SQUAD_CACHE__ = loadedData;
   return loadedData;
 }
 
 async function writePersistenceData(data: SquadPersistenceData): Promise<void> {
+  // Deduplicate before saving
+  data.activities = deduplicateActivityFeed(data.activities);
+
   // Update in-memory global cache immediately
   globalThis.__FITFORGE_SQUAD_CACHE__ = data;
   console.log(
@@ -479,24 +486,18 @@ export async function GET(request: Request) {
       const matchesMember = memberUserIds.includes(act.user_id);
 
       if (matchesGroup || matchesCode || matchesMember) {
-        if (!activities.some((a) => a.id === act.id)) {
-          activities.push({
-            ...act,
-            timestamp: formatTimeAgo(act.created_at || (act as any).timestamp),
-          });
-        }
+        activities.push({
+          ...act,
+          timestamp: formatTimeAgo(act.created_at || (act as any).timestamp),
+        });
       }
     });
 
-    // Sort newest first
-    activities.sort((a, b) => {
-      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return timeB - timeA;
-    });
+    // Clean, robust content & ID deduplication across Supabase logs and persisted activities
+    const deduplicatedActivities = deduplicateActivityFeed(activities);
 
     console.log(
-      `🌐 [API:GET] Successfully returning squad "${activeSquad.name}". Members: ${members.length}, Activities: ${activities.length}`
+      `🌐 [API:GET] Successfully returning squad "${activeSquad.name}". Members: ${members.length}, Activities: ${deduplicatedActivities.length}`
     );
 
     return NextResponse.json({
@@ -505,7 +506,7 @@ export async function GET(request: Request) {
       squads,
       activeSquad,
       members,
-      activities,
+      activities: deduplicatedActivities,
     });
   } catch (err: any) {
     console.error("🌐 [API:GET] Critical Squad GET error:", err);
@@ -737,17 +738,14 @@ export async function POST(request: Request) {
       })).sort((a, b) => b.weekly_volume_kg - a.weekly_volume_kg);
 
       // Gather ALL activities for targetSquad
-      const squadActivities: ActivityFeedItem[] = pData.activities
-        .filter((a) => a.group_id === targetSquad!.id || memberUserIds.includes(a.user_id))
-        .map((a) => ({
-          ...a,
-          timestamp: formatTimeAgo(a.created_at || (a as any).timestamp),
-        }))
-        .sort((a, b) => {
-          const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-          const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-          return timeB - timeA;
-        });
+      const squadActivities: ActivityFeedItem[] = deduplicateActivityFeed(
+        pData.activities
+          .filter((a) => a.group_id === targetSquad!.id || memberUserIds.includes(a.user_id))
+          .map((a) => ({
+            ...a,
+            timestamp: formatTimeAgo(a.created_at || (a as any).timestamp),
+          }))
+      );
 
       console.log(`🌐 [API:POST:join] Returning ${members.length} members and ${squadActivities.length} activities to joiner!`);
 
@@ -1006,13 +1004,43 @@ export async function POST(request: Request) {
         is_real: true,
       };
 
-      // Deduplicate: replace existing by ID or unshift
-      const existingIdx = pData.activities.findIndex((a) => a.id === newAct.id);
+      // Deduplicate: replace existing by ID or content signature
+      const newFoodNorm = newAct.food_name?.toLowerCase().trim();
+      const newWorkoutNorm = newAct.workout_name?.toLowerCase().trim();
+      const newTime = new Date(newAct.created_at || 0).getTime();
+
+      const existingIdx = pData.activities.findIndex((a) => {
+        if (a.id === newAct.id) return true;
+        if (a.user_id === newAct.user_id && a.action_type === newAct.action_type) {
+          const aTime = new Date(a.created_at || 0).getTime();
+          const timeDiff = Math.abs(aTime - newTime);
+
+          if (newAct.action_type === "meal_logged") {
+            const aFoodNorm = a.food_name?.toLowerCase().trim();
+            const namesMatch = Boolean(
+              (newFoodNorm && aFoodNorm && newFoodNorm === aFoodNorm) ||
+              (newAct.tamil_name && a.tamil_name && newAct.tamil_name.trim() === a.tamil_name.trim())
+            );
+            if (namesMatch && (timeDiff < 10 * 60 * 1000 || isNaN(timeDiff))) return true;
+          }
+
+          if (newAct.action_type === "workout_completed" || newAct.action_type === "pr_broken") {
+            const aWorkoutNorm = a.workout_name?.toLowerCase().trim();
+            if (newWorkoutNorm && aWorkoutNorm && newWorkoutNorm === aWorkoutNorm && timeDiff < 15 * 60 * 1000) {
+              return true;
+            }
+          }
+        }
+        return false;
+      });
+
       if (existingIdx >= 0) {
         pData.activities[existingIdx] = newAct;
       } else {
         pData.activities.unshift(newAct);
       }
+
+      pData.activities = deduplicateActivityFeed(pData.activities);
 
       // Keep recent 300 activities
       if (pData.activities.length > 300) {

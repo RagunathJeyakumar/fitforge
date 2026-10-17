@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { deduplicateActivityFeed } from "@/lib/utils";
 import {
   Users,
   Trophy,
@@ -155,8 +156,13 @@ export default function SocialPage() {
     currentGroup ? c.group_id === currentGroup.id : true
   );
 
+  // Deduplicate activity feed entries so each food or workout log is strictly unique
+  const deduplicatedFeed = useMemo(() => {
+    return deduplicateActivityFeed(activityFeed);
+  }, [activityFeed]);
+
   // Filter activity feed
-  const filteredFeed = activityFeed.filter((item) => {
+  const filteredFeed = deduplicatedFeed.filter((item) => {
     if (feedFilter === "food") {
       return item.action_type === "meal_logged";
     }
@@ -169,10 +175,10 @@ export default function SocialPage() {
     return true;
   });
 
-  const foodFeedCount = activityFeed.filter(
+  const foodFeedCount = deduplicatedFeed.filter(
     (item) => item.action_type === "meal_logged"
   ).length;
-  const workoutFeedCount = activityFeed.filter(
+  const workoutFeedCount = deduplicatedFeed.filter(
     (item) =>
       item.action_type === "workout_completed" ||
       item.action_type === "pr_broken"
@@ -723,7 +729,7 @@ export default function SocialPage() {
                 }`}
               >
                 <span>🔥 All</span>
-                <span className="text-[10px] opacity-75">({activityFeed.length})</span>
+                <span className="text-[10px] opacity-75">({deduplicatedFeed.length})</span>
               </button>
               <button
                 onClick={() => setFeedFilter("food")}

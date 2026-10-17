@@ -42,6 +42,7 @@ import {
   clearUserOfflineData,
   saveActiveSessionBackup,
 } from "../pwa/offlineSync";
+import { deduplicateActivityFeed } from "../utils";
 
 interface FitnessContextType {
   // Auth & Profile
@@ -539,13 +540,15 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         try {
           const parsed = JSON.parse(savedFeed);
           if (Array.isArray(parsed)) {
-            const cleanFeed = parsed.filter(
-              (i: any) =>
-                i &&
-                i.is_real === true &&
-                !i.user_id?.startsWith("user-elena") &&
-                !i.user_id?.startsWith("user-liam") &&
-                !i.user_id?.startsWith("user-dave")
+            const cleanFeed = deduplicateActivityFeed(
+              parsed.filter(
+                (i: any) =>
+                  i &&
+                  i.is_real === true &&
+                  !i.user_id?.startsWith("user-elena") &&
+                  !i.user_id?.startsWith("user-liam") &&
+                  !i.user_id?.startsWith("user-dave")
+              )
             );
             setActivityFeed(cleanFeed);
             localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(cleanFeed));
@@ -609,12 +612,13 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (squadRes.ok) {
             const squadData = await squadRes.json();
             if (squadData.success && squadData.inSquad && squadData.squads?.length > 0) {
+              const deduplicatedSquadActs = deduplicateActivityFeed(squadData.activities || []);
               setGroups(squadData.squads);
               setGroupMembers(squadData.members || []);
-              setActivityFeed(squadData.activities || []);
+              setActivityFeed(deduplicatedSquadActs);
               localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(squadData.squads));
               localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(squadData.members || []));
-              localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(squadData.activities || []));
+              localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(deduplicatedSquadActs));
             } else {
               // User has NOT joined any squad: Strict privacy requirement: ZERO friends activity!
               setGroups([]);
@@ -692,99 +696,8 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
             setLoggedMeals([]);
           }
 
-          // Build real live activities from Supabase cloud sessions and meals
-          const realCloudActivities: ActivityFeedItem[] = [];
-
-          const formatTimeAgo = (dateStr: string) => {
-            try {
-              const diffMs = Date.now() - new Date(dateStr).getTime();
-              const mins = Math.floor(diffMs / 60000);
-              if (mins < 2) return "Just now";
-              if (mins < 60) return `${mins}m ago`;
-              const hours = Math.floor(mins / 60);
-              if (hours < 24) return `${hours}h ago`;
-              const days = Math.floor(hours / 24);
-              if (days === 1) return "Yesterday";
-              return `${days}d ago`;
-            } catch {
-              return "Recently";
-            }
-          };
-
-          if (sessions && sessions.length > 0) {
-            sessions.slice(0, 10).forEach((s: any) => {
-              realCloudActivities.push({
-                id: `cloud-sess-${s.id}`,
-                user_id: s.user_id,
-                user_name: s.user_id === authUser.id ? (profile.full_name || "You") : "Squad Lifter",
-                user_avatar: s.user_id === authUser.id ? profile.avatar_url : undefined,
-                action_type: (s.pr_count && s.pr_count > 0) ? "pr_broken" : "workout_completed",
-                workout_name: s.name,
-                volume_kg: Math.round(s.total_volume_kg || 0),
-                pr_detail: (s.pr_count && s.pr_count > 0) ? `Broke ${s.pr_count} personal records! 🔥` : undefined,
-                timestamp: formatTimeAgo(s.created_at || s.start_time),
-                cheers_count: 0,
-                has_cheered: false,
-                is_real: true,
-              });
-            });
-          }
-
-          if (meals && meals.length > 0) {
-            meals.slice(0, 10).forEach((m: any) => {
-              let badge = `🥗 Clean Fuel • ${m.calories} kcal`;
-              if (m.protein_g >= 35) badge = `🍗 ${m.protein_g}g High-Protein Muscle Fuel 🔥`;
-              else if (m.protein_g >= 20) badge = `💪 ${m.protein_g}g Lean Protein Power`;
-              else if (m.tamil_name) badge = `🌿 Tamil Nadu Power Fuel`;
-
-              realCloudActivities.push({
-                id: `cloud-meal-${m.id}`,
-                user_id: m.user_id,
-                user_name: m.user_id === authUser.id ? (profile.full_name || "You") : "Squad Lifter",
-                user_avatar: m.user_id === authUser.id ? profile.avatar_url : undefined,
-                action_type: "meal_logged",
-                meal_type: m.meal_type,
-                food_name: m.food_name,
-                tamil_name: m.tamil_name,
-                calories: m.calories,
-                protein_g: m.protein_g,
-                carbs_g: m.carbs_g,
-                fat_g: m.healthy_fat_g,
-                motivation_badge: badge,
-                timestamp: formatTimeAgo(m.logged_at || m.created_at),
-                cheers_count: 0,
-                has_cheered: false,
-                is_real: true,
-              });
-            });
-          }
-
-          // Real activities only: NEVER inject mock or filler posts
-          // Friends activity is strictly private to squads: Only show if user has joined a squad!
-          const rawGroups = localStorage.getItem(STORAGE_KEYS.GROUPS);
-          let inAnySquad = false;
-          if (rawGroups) {
-            try {
-              const parsed = JSON.parse(rawGroups);
-              if (Array.isArray(parsed) && parsed.length > 0) inAnySquad = true;
-            } catch {}
-          }
-
-          if (inAnySquad) {
-            // Safely merge cloud activities without clobbering other squad members' activities
-            setActivityFeed((prev) => {
-              const cloudIds = new Set(realCloudActivities.map((r) => r.id));
-              const combined = [
-                ...realCloudActivities,
-                ...prev.filter((item) => !cloudIds.has(item.id) && item.is_real),
-              ];
-              localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(combined));
-              return combined;
-            });
-          } else {
-            setActivityFeed([]);
-            localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify([]));
-          }
+          // Squad activities are already fetched and ranked from /api/squad above.
+          // Personal meals and sessions are loaded into loggedMeals and completedSessions for personal history.
         } catch (dbErr) {
           console.warn("Could not load cloud tables:", dbErr);
         }
@@ -1409,7 +1322,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Only publish to squad activity feed if user is part of a squad!
     if (groups.length > 0) {
       setActivityFeed((prev) => {
-        const updated = [feedItem, ...prev];
+        const updated = deduplicateActivityFeed([feedItem, ...prev]);
         localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(updated));
         return updated;
       });
@@ -1628,14 +1541,47 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
             setGroupMembers(data.members || []);
             setActivityFeed((prev) => {
               const serverActivities: ActivityFeedItem[] = data.activities || [];
-              const serverIds = new Set(serverActivities.map((a) => a.id));
-              // Retain local real activities (like newly logged food or workouts) that server hasn't returned yet
-              const localUnsynced = prev.filter((p) => p.is_real && !serverIds.has(p.id));
-              const combined = [...localUnsynced, ...serverActivities].sort((a, b) => {
-                const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-                const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-                return timeB - timeA;
+
+              // Retain genuinely un-synced local activities (where server does not have a matching ID AND does not have a matching content signature)
+              const localUnsynced = prev.filter((p) => {
+                if (!p.is_real) return false;
+                if (serverActivities.some((s) => s.id === p.id)) return false;
+
+                const pTime = p.created_at ? new Date(p.created_at).getTime() : 0;
+                const pFood = p.food_name?.toLowerCase().trim();
+                const pWorkout = p.workout_name?.toLowerCase().trim();
+
+                const matchedInServer = serverActivities.some((s) => {
+                  if (s.user_id === p.user_id && s.action_type === p.action_type) {
+                    const sTime = s.created_at ? new Date(s.created_at).getTime() : 0;
+                    const timeDiff = Math.abs(pTime - sTime);
+
+                    if (p.action_type === "meal_logged") {
+                      const sFood = s.food_name?.toLowerCase().trim();
+                      const namesMatch = Boolean(
+                        (pFood && sFood && pFood === sFood) ||
+                        (p.tamil_name && s.tamil_name && p.tamil_name.trim() === s.tamil_name.trim())
+                      );
+                      if (namesMatch) {
+                        if (!pTime || !sTime || isNaN(timeDiff) || timeDiff < 10 * 60 * 1000) return true;
+                        if (p.meal_type && s.meal_type && p.meal_type === s.meal_type && timeDiff < 45 * 60 * 1000) return true;
+                      }
+                    }
+
+                    if (p.action_type === "workout_completed" || p.action_type === "pr_broken") {
+                      const sWorkout = s.workout_name?.toLowerCase().trim();
+                      if (pWorkout && sWorkout && pWorkout === sWorkout && timeDiff < 15 * 60 * 1000) {
+                        return true;
+                      }
+                    }
+                  }
+                  return false;
+                });
+
+                return !matchedInServer;
               });
+
+              const combined = deduplicateActivityFeed([...localUnsynced, ...serverActivities]);
               localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(combined));
               return combined;
             });
@@ -1761,10 +1707,13 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
             if (d.success && d.squad) {
               setGroups((prev) => [d.squad, ...prev.filter((g) => g.id !== newGroupId && g.id !== d.squad.id)]);
               if (d.members) setGroupMembers(d.members);
-              if (d.activities) setActivityFeed(d.activities);
+              if (d.activities) {
+                const deduped = deduplicateActivityFeed(d.activities);
+                setActivityFeed(deduped);
+                localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(deduped));
+              }
               localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify([d.squad]));
               if (d.members) localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(d.members));
-              if (d.activities) localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(d.activities));
               console.log("⚡ [STORE:CREATE] Updated state with server squad:", d.squad.name, "Code:", d.squad.invite_code);
             }
           })
@@ -1853,8 +1802,9 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         // Update activities feed (contains both User A and User B activities!)
         if (data.activities) {
-          setActivityFeed(data.activities);
-          localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(data.activities));
+          const deduped = deduplicateActivityFeed(data.activities);
+          setActivityFeed(deduped);
+          localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(deduped));
         }
 
         const squadChallenge: GroupChallenge = {
@@ -1952,9 +1902,10 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const s = Math.max(0.1, servings);
       let loggedAt = new Date().toISOString();
       if (dateStr) {
-        const now = new Date();
-        const timePart = now.toTimeString().split(" ")[0];
-        loggedAt = `${dateStr}T${timePart}Z`;
+        const todayStr = new Date().toISOString().split("T")[0];
+        if (dateStr !== todayStr) {
+          loggedAt = new Date(`${dateStr}T12:00:00.000Z`).toISOString();
+        }
       }
 
       const newEntry: LoggedMealEntry = {
@@ -2066,7 +2017,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Only publish to squad activity feed if user is part of a squad!
       if (groups.length > 0) {
         setActivityFeed((prev) => {
-          const updated = [mealFeedItem, ...prev];
+          const updated = deduplicateActivityFeed([mealFeedItem, ...prev]);
           localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(updated));
           return updated;
         });
