@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Users,
@@ -37,6 +37,7 @@ export default function SocialPage() {
     joinGroupByCode,
     leaveGroup,
     cheerActivity,
+    refreshSquadData,
     completedSessions,
     user,
   } = useFitness();
@@ -50,10 +51,20 @@ export default function SocialPage() {
   const [groupNameInput, setGroupNameInput] = useState("");
   const [groupDescInput, setGroupDescInput] = useState("");
   const [feedFilter, setFeedFilter] = useState<FeedFilter>("all");
+  const [isJoining, setIsJoining] = useState(false);
 
   // Determine current active group
   const currentGroup =
     groups.find((g) => g.id === activeGroupId) || groups[0] || null;
+
+  // Poll for live friend workouts and food logs while squad is active
+  useEffect(() => {
+    if (!currentGroup || !user?.id) return;
+    const interval = setInterval(() => {
+      refreshSquadData(user.id, currentGroup.id);
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [currentGroup?.id, user?.id, refreshSquadData]);
 
   const handleCopyCode = () => {
     if (!currentGroup) return;
@@ -62,12 +73,19 @@ export default function SocialPage() {
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  const handleJoin = (codeToJoin?: string) => {
+  const handleJoin = async (codeToJoin?: string) => {
     const code = (codeToJoin || inviteCodeInput).trim();
     if (!code) return;
-    joinGroupByCode(code);
-    setShowJoinModal(false);
-    setInviteCodeInput("");
+    setIsJoining(true);
+    try {
+      const ok = await joinGroupByCode(code);
+      if (ok) {
+        setShowJoinModal(false);
+        setInviteCodeInput("");
+      }
+    } finally {
+      setIsJoining(false);
+    }
   };
 
   const handleCreate = (e: React.FormEvent) => {

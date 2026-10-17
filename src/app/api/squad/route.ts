@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 import { getSupabaseConfig } from "@/lib/supabase/config";
 import { ActivityFeedItem, FriendGroup, GroupMember, MealType } from "@/lib/types";
 
@@ -21,8 +23,7 @@ const PRESET_SQUADS: Record<string, { id: string; name: string; description: str
   },
 };
 
-// In-memory dual-layer registry to ensure 100% reliability across RLS policies
-interface InMemorySquad {
+interface StoredSquad {
   id: string;
   name: string;
   description: string;
@@ -31,7 +32,7 @@ interface InMemorySquad {
   created_at: string;
 }
 
-interface InMemoryMembership {
+interface StoredMembership {
   id: string;
   group_id: string;
   user_id: string;
@@ -42,30 +43,102 @@ interface InMemoryMembership {
     avatar_url?: string;
     email?: string;
   };
+  weekly_volume_kg?: number;
+  weekly_workouts_count?: number;
+  streak_weeks?: number;
 }
 
-// Server memory storage for fallback sync
-const globalSquads = new Map<string, InMemorySquad>();
-const globalMemberships: InMemoryMembership[] = [];
-const globalActivities: ActivityFeedItem[] = [];
+interface SquadPersistenceData {
+  squads: StoredSquad[];
+  memberships: StoredMembership[];
+  activities: (ActivityFeedItem & {
+    group_id?: string;
+    invite_code?: string;
+    created_at?: string;
+  })[];
+}
 
-// Initialize preset squads in memory registry
-Object.entries(PRESET_SQUADS).forEach(([code, preset]) => {
-  if (!globalSquads.has(preset.id)) {
-    globalSquads.set(preset.id, {
+const PERSISTENCE_FILE_PATH = path.join(
+  process.cwd(),
+  "src",
+  "lib",
+  "data",
+  "squad_persistence.json"
+);
+
+async function readPersistenceData(): Promise<SquadPersistenceData> {
+  try {
+    if (fs.existsSync(PERSISTENCE_FILE_PATH)) {
+      const raw = await fs.promises.readFile(PERSISTENCE_FILE_PATH, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.squads)) {
+        // Ensure preset squads exist
+        Object.entries(PRESET_SQUADS).forEach(([code, preset]) => {
+          if (!parsed.squads.some((s: StoredSquad) => s.id === preset.id || s.invite_code?.toUpperCase() === code)) {
+            parsed.squads.push({
+              id: preset.id,
+              name: preset.name,
+              description: preset.description,
+              invite_code: code,
+              created_by: "system",
+              created_at: "2026-01-01T00:00:00.000Z",
+            });
+          }
+        });
+        if (!Array.isArray(parsed.memberships)) parsed.memberships = [];
+        if (!Array.isArray(parsed.activities)) parsed.activities = [];
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed reading squad_persistence.json:", err);
+  }
+
+  // Fallback initial data
+  const initial: SquadPersistenceData = {
+    squads: Object.entries(PRESET_SQUADS).map(([code, preset]) => ({
       id: preset.id,
       name: preset.name,
       description: preset.description,
       invite_code: code,
       created_by: "system",
       created_at: "2026-01-01T00:00:00.000Z",
-    });
-  }
-});
+    })),
+    memberships: [],
+    activities: [],
+  };
 
-function formatTimeAgo(dateStr: string): string {
   try {
-    const diffMs = Date.now() - new Date(dateStr).getTime();
+    const dir = path.dirname(PERSISTENCE_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      await fs.promises.mkdir(dir, { recursive: true });
+    }
+    await fs.promises.writeFile(PERSISTENCE_FILE_PATH, JSON.stringify(initial, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Failed initializing squad_persistence.json:", e);
+  }
+
+  return initial;
+}
+
+async function writePersistenceData(data: SquadPersistenceData): Promise<void> {
+  try {
+    const dir = path.dirname(PERSISTENCE_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      await fs.promises.mkdir(dir, { recursive: true });
+    }
+    await fs.promises.writeFile(PERSISTENCE_FILE_PATH, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Error writing squad_persistence.json:", err);
+  }
+}
+
+function formatTimeAgo(dateStr?: string): string {
+  if (!dateStr) return "Just now";
+  try {
+    const timeMs = new Date(dateStr).getTime();
+    if (isNaN(timeMs)) return dateStr;
+    const diffMs = Date.now() - timeMs;
     const mins = Math.floor(diffMs / 60000);
     if (mins < 2) return "Just now";
     if (mins < 60) return `${mins}m ago`;
@@ -102,40 +175,53 @@ export async function GET(request: Request) {
       "Content-Type": "application/json",
     };
 
-    // 1. Fetch user's squad memberships from Supabase DB
-    let memberships: any[] = [];
+    // Load persistent squads and memberships
+    const pData = await readPersistenceData();
+
+    // 1. Fetch user's squad memberships from Supabase DB (if available)
+    let dbMemberships: any[] = [];
     try {
       const memberRes = await fetch(
         `${url}/rest/v1/group_memberships?user_id=eq.${userId}&select=*,group:groups(*)`,
         { headers }
       );
       if (memberRes.ok) {
-        memberships = await memberRes.json();
+        dbMemberships = await memberRes.json();
       }
     } catch (e) {
-      console.warn("Could not query DB group_memberships:", e);
+      // Supabase is secondary fallback
     }
 
-    // Merge in-memory memberships if any
-    const memMembers = globalMemberships.filter((m) => m.user_id === userId);
-    memMembers.forEach((mm) => {
-      if (!memberships.some((m) => m.group_id === mm.group_id)) {
-        const sq = globalSquads.get(mm.group_id);
-        if (sq) {
-          memberships.push({
-            id: mm.id,
-            group_id: mm.group_id,
-            user_id: mm.user_id,
-            role: mm.role,
-            joined_at: mm.joined_at,
-            group: sq,
+    // Merge Supabase memberships into pData
+    dbMemberships.forEach((dbM) => {
+      if (dbM.group) {
+        if (!pData.squads.some((s) => s.id === dbM.group.id)) {
+          pData.squads.push({
+            id: dbM.group.id,
+            name: dbM.group.name,
+            description: dbM.group.description || "",
+            invite_code: dbM.group.invite_code,
+            created_by: dbM.group.created_by,
+            created_at: dbM.group.created_at || new Date().toISOString(),
+          });
+        }
+        if (!pData.memberships.some((m) => m.group_id === dbM.group_id && m.user_id === userId)) {
+          pData.memberships.push({
+            id: dbM.id || `mem-${dbM.group_id}-${userId}`,
+            group_id: dbM.group_id,
+            user_id: userId,
+            role: dbM.role || "member",
+            joined_at: dbM.joined_at || new Date().toISOString(),
           });
         }
       }
     });
 
+    // Check all squads this user belongs to
+    const userMemberships = pData.memberships.filter((m) => m.user_id === userId);
+
     // If user has not joined any squad, return strictly empty state!
-    if (!memberships || memberships.length === 0) {
+    if (userMemberships.length === 0) {
       return NextResponse.json({
         success: true,
         inSquad: false,
@@ -146,19 +232,24 @@ export async function GET(request: Request) {
       });
     }
 
-    // Extract valid squads
-    const squads: FriendGroup[] = memberships
-      .filter((m) => m.group)
-      .map((m) => ({
-        id: m.group.id,
-        name: m.group.name,
-        description: m.group.description || "",
-        invite_code: m.group.invite_code,
-        created_by: m.group.created_by,
-        members_count: 1,
-        created_at: m.group.created_at,
-        is_user_admin: m.role === "admin" || m.group.created_by === userId,
-      }));
+    // Extract valid squads for this user
+    const squads: FriendGroup[] = userMemberships
+      .map((m) => {
+        const sq = pData.squads.find((s) => s.id === m.group_id);
+        if (!sq) return null;
+        const count = pData.memberships.filter((mb) => mb.group_id === sq.id).length;
+        return {
+          id: sq.id,
+          name: sq.name,
+          description: sq.description || "",
+          invite_code: sq.invite_code,
+          created_by: sq.created_by,
+          members_count: count,
+          created_at: sq.created_at,
+          is_user_admin: m.role === "admin" || sq.created_by === userId,
+        };
+      })
+      .filter(Boolean) as FriendGroup[];
 
     if (squads.length === 0) {
       return NextResponse.json({
@@ -175,95 +266,46 @@ export async function GET(request: Request) {
     const activeSquad =
       squads.find((s) => s.id === requestedGroupId) || squads[0];
 
-    // 2. Fetch all members of this active squad from Supabase DB
-    let rawMembers: any[] = [];
-    try {
-      const allMembersRes = await fetch(
-        `${url}/rest/v1/group_memberships?group_id=eq.${activeSquad.id}&select=*,profile:profiles(*)`,
-        { headers }
-      );
-      if (allMembersRes.ok) {
-        rawMembers = await allMembersRes.json();
-      }
-    } catch (e) {
-      console.warn("Could not query DB all members:", e);
-    }
+    // Find ALL members for this active squad (User A + User B + ...)
+    const allSquadMemberships = pData.memberships.filter((m) => m.group_id === activeSquad.id);
+    const memberUserIds = allSquadMemberships.map((m) => m.user_id).filter(Boolean);
 
-    // Merge in-memory members for this squad
-    globalMemberships
-      .filter((m) => m.group_id === activeSquad.id)
-      .forEach((mm) => {
-        if (!rawMembers.some((rm) => rm.user_id === mm.user_id)) {
-          rawMembers.push({
-            id: mm.id,
-            group_id: mm.group_id,
-            user_id: mm.user_id,
-            role: mm.role,
-            joined_at: mm.joined_at,
-            profile: mm.profile || {
-              full_name: "Athlete",
-              avatar_url: undefined,
-              email: "",
-            },
-          });
-        }
-      });
-
-    const memberUserIds = rawMembers.map((m) => m.user_id).filter(Boolean);
-
-    // 3. Fetch real workout sessions for all squad members
+    // Fetch real workout sessions & diet logs from Supabase for all squad members
     let squadSessions: any[] = [];
-    if (memberUserIds.length > 0) {
-      try {
-        const idsQuery = `in.(${memberUserIds.join(",")})`;
-        const sessRes = await fetch(
-          `${url}/rest/v1/workout_sessions?user_id=${idsQuery}&order=created_at.desc&limit=30`,
-          { headers }
-        );
-        if (sessRes.ok) {
-          squadSessions = await sessRes.json();
-        }
-      } catch (e) {
-        console.warn("Could not query DB workout_sessions:", e);
-      }
-    }
-
-    // 4. Fetch real diet logs for all squad members
     let squadMeals: any[] = [];
     if (memberUserIds.length > 0) {
       try {
         const idsQuery = `in.(${memberUserIds.join(",")})`;
-        const mealRes = await fetch(
-          `${url}/rest/v1/diet_logs?user_id=${idsQuery}&order=logged_at.desc&limit=30`,
-          { headers }
-        );
-        if (mealRes.ok) {
-          squadMeals = await mealRes.json();
-        }
+        const [sessRes, mealRes] = await Promise.all([
+          fetch(`${url}/rest/v1/workout_sessions?user_id=${idsQuery}&order=created_at.desc&limit=30`, { headers }),
+          fetch(`${url}/rest/v1/diet_logs?user_id=${idsQuery}&order=logged_at.desc&limit=30`, { headers }),
+        ]);
+        if (sessRes.ok) squadSessions = await sessRes.json();
+        if (mealRes.ok) squadMeals = await mealRes.json();
       } catch (e) {
-        console.warn("Could not query DB diet_logs:", e);
+        // secondary
       }
     }
 
-    // 5. Build member map for profile details and volume ranking
+    // Build member map for profile details and volume ranking
     const memberMap = new Map<string, any>();
-    rawMembers.forEach((rm) => {
-      memberMap.set(rm.user_id, {
-        id: rm.id,
-        group_id: rm.group_id,
-        user_id: rm.user_id,
-        role: rm.role,
-        full_name: rm.profile?.full_name || "Athlete",
-        avatar_url: rm.profile?.avatar_url,
-        email: rm.profile?.email || "",
-        weekly_volume_kg: 0,
-        weekly_workouts_count: 0,
-        streak_weeks: 1,
-        joined_at: rm.joined_at,
+    allSquadMemberships.forEach((m) => {
+      memberMap.set(m.user_id, {
+        id: m.id,
+        group_id: m.group_id,
+        user_id: m.user_id,
+        role: m.role,
+        full_name: m.profile?.full_name || "Athlete",
+        avatar_url: m.profile?.avatar_url,
+        email: m.profile?.email || "",
+        weekly_volume_kg: Number(m.weekly_volume_kg) || 0,
+        weekly_workouts_count: Number(m.weekly_workouts_count) || 0,
+        streak_weeks: Number(m.streak_weeks) || 1,
+        joined_at: m.joined_at,
       });
     });
 
-    // Compute live volume and workouts per member from real sessions
+    // Incorporate Supabase sessions into member volume & workouts
     squadSessions.forEach((s) => {
       const mem = memberMap.get(s.user_id);
       if (mem) {
@@ -272,28 +314,30 @@ export async function GET(request: Request) {
       }
     });
 
-    const members: GroupMember[] = Array.from(memberMap.values()).map((m) => ({
-      id: m.id,
-      group_id: m.group_id,
-      user_id: m.user_id,
-      role: m.role as "admin" | "member",
-      user_profile: {
-        full_name: m.full_name,
-        avatar_url: m.avatar_url,
-        email: m.email,
-      },
-      weekly_workouts_count: m.weekly_workouts_count,
-      weekly_volume_kg: m.weekly_volume_kg,
-      streak_weeks: Math.max(1, Math.min(8, m.weekly_workouts_count)),
-      joined_at: m.joined_at,
-    }));
+    const members: GroupMember[] = Array.from(memberMap.values())
+      .map((m) => ({
+        id: m.id,
+        group_id: m.group_id,
+        user_id: m.user_id,
+        role: m.role as "admin" | "member",
+        user_profile: {
+          full_name: m.full_name,
+          avatar_url: m.avatar_url,
+          email: m.email,
+        },
+        weekly_workouts_count: m.weekly_workouts_count,
+        weekly_volume_kg: m.weekly_volume_kg,
+        streak_weeks: Math.max(1, Math.min(12, m.weekly_workouts_count || 1)),
+        joined_at: m.joined_at,
+      }))
+      .sort((a, b) => b.weekly_volume_kg - a.weekly_volume_kg);
 
     activeSquad.members_count = members.length;
 
-    // 6. Build unified squad activity feed (Real Workout logs + Real Food logs)
+    // Build unified squad activity feed (Real Workout logs + Real Food logs from ALL members)
     const activities: ActivityFeedItem[] = [];
 
-    // Add workout sessions to feed
+    // Add Supabase workout sessions to feed
     squadSessions.forEach((s) => {
       const mem = memberMap.get(s.user_id);
       activities.push({
@@ -306,13 +350,14 @@ export async function GET(request: Request) {
         volume_kg: Math.round(Number(s.total_volume_kg) || 0),
         pr_detail: s.pr_count && s.pr_count > 0 ? `Broke ${s.pr_count} personal records! 🔥` : undefined,
         timestamp: formatTimeAgo(s.created_at || s.start_time),
+        created_at: s.created_at || s.start_time,
         cheers_count: 0,
         has_cheered: false,
         is_real: true,
       });
     });
 
-    // Add food fuel logs to feed
+    // Add Supabase food fuel logs to feed
     squadMeals.forEach((m) => {
       const mem = memberMap.get(m.user_id);
       const protein = Number(m.protein_g) || 0;
@@ -336,23 +381,34 @@ export async function GET(request: Request) {
         fat_g: Number(m.healthy_fat_g) || 0,
         motivation_badge: badge,
         timestamp: formatTimeAgo(m.logged_at || m.created_at),
+        created_at: m.logged_at || m.created_at,
         cheers_count: 0,
         has_cheered: false,
         is_real: true,
       });
     });
 
-    // Add any live logged activities from memory for this squad
-    globalActivities
-      .filter((a) => memberUserIds.includes(a.user_id))
-      .forEach((ga) => {
-        if (!activities.some((act) => act.id === ga.id)) {
-          activities.push(ga);
+    // Add persisted activities for this squad and its members
+    pData.activities.forEach((act) => {
+      if (
+        (act.group_id && act.group_id === activeSquad.id) ||
+        memberUserIds.includes(act.user_id)
+      ) {
+        if (!activities.some((a) => a.id === act.id)) {
+          activities.push({
+            ...act,
+            timestamp: formatTimeAgo(act.created_at || (act as any).timestamp),
+          });
         }
-      });
+      }
+    });
 
     // Sort newest first
-    activities.sort((a, b) => (a.timestamp === "Just now" ? -1 : 1));
+    activities.sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeB - timeA;
+    });
 
     return NextResponse.json({
       success: true,
@@ -372,11 +428,26 @@ export async function GET(request: Request) {
 }
 
 // POST /api/squad
-// Actions: join, create, leave, log_activity
+// Actions: join, create, leave, log_activity, cheer
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { action, userId, inviteCode, name, description, groupId, userProfile, activity } = body;
+    const {
+      action,
+      userId,
+      inviteCode,
+      name,
+      description,
+      groupId,
+      userProfile,
+      activity,
+      initialVolume,
+      initialWorkoutsCount,
+      recentActivities,
+      volume,
+      workouts_increment,
+      activityId,
+    } = body;
 
     if (!userId) {
       return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });
@@ -391,7 +462,10 @@ export async function POST(request: Request) {
       Prefer: "return=representation",
     };
 
-    // Ensure user profile exists in profiles table
+    // Load persistent data
+    const pData = await readPersistenceData();
+
+    // Ensure user profile in Supabase if possible
     if (userProfile?.full_name) {
       try {
         await fetch(`${url}/rest/v1/profiles`, {
@@ -409,7 +483,7 @@ export async function POST(request: Request) {
           }),
         });
       } catch (e) {
-        console.warn("Profile upsert warning:", e);
+        // profile upsert warning ignored
       }
     }
 
@@ -420,86 +494,108 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "Invite code is required" }, { status: 400 });
       }
 
-      // Check if squad exists in DB
-      let existingGroups: any[] = [];
-      try {
-        const groupRes = await fetch(
-          `${url}/rest/v1/groups?invite_code=eq.${encodeURIComponent(code)}&select=*`,
-          { headers }
-        );
-        if (groupRes.ok) {
-          existingGroups = await groupRes.json();
-        }
-      } catch (e) {
-        console.warn("Could not query DB groups:", e);
-      }
+      // Check persistence file first
+      let targetSquad = pData.squads.find((s) => s.invite_code?.toUpperCase() === code);
 
-      let targetSquad = existingGroups[0];
-
-      // Check memory registry
-      if (!targetSquad) {
-        for (const sq of globalSquads.values()) {
-          if (sq.invite_code.toUpperCase() === code) {
-            targetSquad = sq;
-            break;
-          }
-        }
-      }
-
-      // If not in DB or memory, check preset squads
+      // Check preset squads
       if (!targetSquad && PRESET_SQUADS[code]) {
         const preset = PRESET_SQUADS[code];
+        targetSquad = {
+          id: preset.id,
+          name: preset.name,
+          description: preset.description,
+          invite_code: code,
+          created_by: "system",
+          created_at: new Date().toISOString(),
+        };
+        pData.squads.push(targetSquad);
+      }
+
+      // Check Supabase if not found
+      if (!targetSquad) {
         try {
-          const createPresetRes = await fetch(`${url}/rest/v1/groups`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              id: preset.id,
-              name: preset.name,
-              description: preset.description,
-              invite_code: code,
-              created_by: userId,
-            }),
-          });
-          if (createPresetRes.ok) {
-            const inserted = await createPresetRes.json();
-            targetSquad = inserted[0];
+          const groupRes = await fetch(
+            `${url}/rest/v1/groups?invite_code=eq.${encodeURIComponent(code)}&select=*`,
+            { headers }
+          );
+          if (groupRes.ok) {
+            const existing = await groupRes.json();
+            if (existing && existing.length > 0 && existing[0]) {
+              targetSquad = existing[0] as StoredSquad;
+              pData.squads.push(targetSquad);
+            }
           }
         } catch (e) {
-          console.warn("Could not insert preset to DB:", e);
+          // ignore
         }
-
-        if (!targetSquad) {
-          targetSquad = {
-            id: preset.id,
-            name: preset.name,
-            description: preset.description,
-            invite_code: code,
-            created_by: userId,
-            created_at: new Date().toISOString(),
-          };
-        }
-        globalSquads.set(targetSquad.id, targetSquad);
       }
 
       if (!targetSquad) {
-        return NextResponse.json({
-          success: false,
-          error: `Squad code "${code}" not found. Verify the code with your squad founder or create a new squad.`,
-        }, { status: 404 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Squad code "${code}" not found. Verify the code with your squad founder or create a new squad.`,
+          },
+          { status: 404 }
+        );
       }
 
-      // Save to global squads memory
-      globalSquads.set(targetSquad.id, {
-        id: targetSquad.id,
-        name: targetSquad.name,
-        description: targetSquad.description || "",
-        invite_code: targetSquad.invite_code,
-        created_by: targetSquad.created_by,
-        created_at: targetSquad.created_at || new Date().toISOString(),
-      });
+      // Ensure membership in persistence data
+      const existingMem = pData.memberships.find(
+        (m) => m.group_id === targetSquad.id && m.user_id === userId
+      );
 
-      // Insert membership to DB
+      if (!existingMem) {
+        pData.memberships.push({
+          id: `mem-${targetSquad.id}-${userId}`,
+          group_id: targetSquad.id,
+          user_id: userId,
+          role: "member",
+          joined_at: new Date().toISOString(),
+          profile: {
+            full_name: userProfile?.full_name || "Athlete",
+            avatar_url: userProfile?.avatar_url,
+            email: userProfile?.email || "",
+          },
+          weekly_volume_kg: Number(initialVolume) || 0,
+          weekly_workouts_count: Number(initialWorkoutsCount) || 0,
+          streak_weeks: Math.max(1, Number(initialWorkoutsCount) || 1),
+        });
+      } else {
+        if (userProfile?.full_name) {
+          existingMem.profile = {
+            full_name: userProfile.full_name,
+            avatar_url: userProfile.avatar_url,
+            email: userProfile.email || "",
+          };
+        }
+        if (initialVolume && Number(initialVolume) > (existingMem.weekly_volume_kg || 0)) {
+          existingMem.weekly_volume_kg = Number(initialVolume);
+        }
+        if (initialWorkoutsCount && Number(initialWorkoutsCount) > (existingMem.weekly_workouts_count || 0)) {
+          existingMem.weekly_workouts_count = Number(initialWorkoutsCount);
+        }
+      }
+
+      // Add any recent activities user brought along
+      if (Array.isArray(recentActivities)) {
+        recentActivities.forEach((act) => {
+          if (!pData.activities.some((a) => a.id === act.id)) {
+            pData.activities.unshift({
+              ...act,
+              group_id: targetSquad.id,
+              invite_code: targetSquad.invite_code,
+              created_at: act.created_at || new Date().toISOString(),
+              is_real: true,
+            });
+          }
+        });
+      }
+
+      // Save to disk
+      await writePersistenceData(pData);
+
+      // Attempt Supabase insert in background
       try {
         await fetch(`${url}/rest/v1/group_memberships`, {
           method: "POST",
@@ -512,27 +608,41 @@ export async function POST(request: Request) {
           }),
         });
       } catch (e) {
-        console.warn("Could not insert membership to DB:", e);
+        // secondary
       }
 
-      // Save membership to memory
-      const existingMemIndex = globalMemberships.findIndex(
-        (m) => m.group_id === targetSquad.id && m.user_id === userId
-      );
-      if (existingMemIndex === -1) {
-        globalMemberships.push({
-          id: `mem-${targetSquad.id}-${userId}`,
-          group_id: targetSquad.id,
-          user_id: userId,
-          role: "member",
-          joined_at: new Date().toISOString(),
-          profile: {
-            full_name: userProfile?.full_name || "Athlete",
-            avatar_url: userProfile?.avatar_url,
-            email: userProfile?.email || "",
-          },
+      // Gather ALL members of targetSquad (both User A and User B!)
+      const allMembers = pData.memberships.filter((m) => m.group_id === targetSquad.id);
+      const memberUserIds = allMembers.map((m) => m.user_id);
+
+      const members: GroupMember[] = allMembers.map((m) => ({
+        id: m.id,
+        group_id: m.group_id,
+        user_id: m.user_id,
+        role: m.role as "admin" | "member",
+        user_profile: {
+          full_name: m.profile?.full_name || "Athlete",
+          avatar_url: m.profile?.avatar_url,
+          email: m.profile?.email || "",
+        },
+        weekly_workouts_count: m.weekly_workouts_count || 0,
+        weekly_volume_kg: m.weekly_volume_kg || 0,
+        streak_weeks: m.streak_weeks || 1,
+        joined_at: m.joined_at,
+      })).sort((a, b) => b.weekly_volume_kg - a.weekly_volume_kg);
+
+      // Gather ALL activities for targetSquad
+      const squadActivities: ActivityFeedItem[] = pData.activities
+        .filter((a) => a.group_id === targetSquad.id || memberUserIds.includes(a.user_id))
+        .map((a) => ({
+          ...a,
+          timestamp: formatTimeAgo(a.created_at || (a as any).timestamp),
+        }))
+        .sort((a, b) => {
+          const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return timeB - timeA;
         });
-      }
 
       return NextResponse.json({
         success: true,
@@ -543,10 +653,12 @@ export async function POST(request: Request) {
           description: targetSquad.description || "",
           invite_code: targetSquad.invite_code,
           created_by: targetSquad.created_by,
-          members_count: 1,
+          members_count: members.length,
           created_at: targetSquad.created_at,
           is_user_admin: targetSquad.created_by === userId,
         },
+        members,
+        activities: squadActivities,
       });
     }
 
@@ -557,36 +669,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "Squad name is required" }, { status: 400 });
       }
 
-      // Generate unique squad code
       const randomCode =
         inviteCode?.trim().toUpperCase() ||
         `FORGE-${Math.floor(100 + Math.random() * 900)}`;
 
-      let createdGroup: any = null;
-      try {
-        const newGroupRes = await fetch(`${url}/rest/v1/groups`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            name: squadName,
-            description: description || "Private squad for tracking volume and nutrition fuel together.",
-            invite_code: randomCode,
-            created_by: userId,
-          }),
-        });
+      const squadId = `00000000-0000-0000-0000-${Date.now().toString().slice(-12)}`;
 
-        if (newGroupRes.ok) {
-          const data = await newGroupRes.json();
-          createdGroup = data[0];
-        }
-      } catch (e) {
-        console.warn("Could not insert new group to DB:", e);
-      }
-
-      const squadId =
-        createdGroup?.id || `00000000-0000-0000-0000-${Date.now().toString().slice(-12)}`;
-
-      const newSquadData: InMemorySquad = {
+      const newSquad: StoredSquad = {
         id: squadId,
         name: squadName,
         description: description || "Private squad for tracking volume and nutrition fuel together.",
@@ -594,10 +683,58 @@ export async function POST(request: Request) {
         created_by: userId,
         created_at: new Date().toISOString(),
       };
-      globalSquads.set(squadId, newSquadData);
 
-      // Insert admin membership
+      pData.squads.push(newSquad);
+
+      // Founder membership
+      const founderMem: StoredMembership = {
+        id: `mem-${squadId}-${userId}`,
+        group_id: squadId,
+        user_id: userId,
+        role: "admin",
+        joined_at: new Date().toISOString(),
+        profile: {
+          full_name: userProfile?.full_name || "Athlete",
+          avatar_url: userProfile?.avatar_url,
+          email: userProfile?.email || "",
+        },
+        weekly_volume_kg: Number(initialVolume) || 0,
+        weekly_workouts_count: Number(initialWorkoutsCount) || 1,
+        streak_weeks: 1,
+      };
+
+      pData.memberships.push(founderMem);
+
+      // If founder has recent activities, tag and add them
+      if (Array.isArray(recentActivities)) {
+        recentActivities.forEach((act) => {
+          if (!pData.activities.some((a) => a.id === act.id)) {
+            pData.activities.unshift({
+              ...act,
+              group_id: squadId,
+              invite_code: randomCode,
+              created_at: act.created_at || new Date().toISOString(),
+              is_real: true,
+            });
+          }
+        });
+      }
+
+      await writePersistenceData(pData);
+
+      // Attempt Supabase insert in background
       try {
+        await fetch(`${url}/rest/v1/groups`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            id: squadId,
+            name: squadName,
+            description: newSquad.description,
+            invite_code: randomCode,
+            created_by: userId,
+          }),
+        });
         await fetch(`${url}/rest/v1/group_memberships`, {
           method: "POST",
           headers,
@@ -609,21 +746,24 @@ export async function POST(request: Request) {
           }),
         });
       } catch (e) {
-        console.warn("Could not insert admin membership to DB:", e);
+        // secondary
       }
 
-      globalMemberships.push({
-        id: `mem-${squadId}-${userId}`,
+      const founderMemberFormatted: GroupMember = {
+        id: founderMem.id,
         group_id: squadId,
         user_id: userId,
         role: "admin",
-        joined_at: new Date().toISOString(),
-        profile: {
-          full_name: userProfile?.full_name || "Athlete",
-          avatar_url: userProfile?.avatar_url,
-          email: userProfile?.email || "",
+        user_profile: {
+          full_name: founderMem.profile?.full_name || "Athlete",
+          avatar_url: founderMem.profile?.avatar_url,
+          email: founderMem.profile?.email || "",
         },
-      });
+        weekly_workouts_count: founderMem.weekly_workouts_count || 1,
+        weekly_volume_kg: founderMem.weekly_volume_kg || 0,
+        streak_weeks: 1,
+        joined_at: founderMem.joined_at,
+      };
 
       return NextResponse.json({
         success: true,
@@ -631,13 +771,20 @@ export async function POST(request: Request) {
         squad: {
           id: squadId,
           name: squadName,
-          description: description || "Private squad for tracking volume and nutrition fuel together.",
+          description: newSquad.description,
           invite_code: randomCode,
           created_by: userId,
           members_count: 1,
-          created_at: newSquadData.created_at,
+          created_at: newSquad.created_at,
           is_user_admin: true,
         },
+        members: [founderMemberFormatted],
+        activities: pData.activities
+          .filter((a) => a.group_id === squadId)
+          .map((a) => ({
+            ...a,
+            timestamp: formatTimeAgo(a.created_at || (a as any).timestamp),
+          })),
       });
     }
 
@@ -647,25 +794,18 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "Missing groupId" }, { status: 400 });
       }
 
+      pData.memberships = pData.memberships.filter(
+        (m) => !(m.group_id === groupId && m.user_id === userId)
+      );
+
+      await writePersistenceData(pData);
+
       try {
         await fetch(
           `${url}/rest/v1/group_memberships?group_id=eq.${groupId}&user_id=eq.${userId}`,
-          {
-            method: "DELETE",
-            headers,
-          }
+          { method: "DELETE", headers }
         );
-      } catch (e) {
-        console.warn("Could not delete membership from DB:", e);
-      }
-
-      // Remove from memory
-      const idx = globalMemberships.findIndex(
-        (m) => m.group_id === groupId && m.user_id === userId
-      );
-      if (idx !== -1) {
-        globalMemberships.splice(idx, 1);
-      }
+      } catch (e) {}
 
       return NextResponse.json({
         success: true,
@@ -673,25 +813,60 @@ export async function POST(request: Request) {
       });
     }
 
-    // 4. LOG ACTIVITY DIRECTLY (e.g., immediate meal or workout sync)
+    // 4. LOG ACTIVITY (workouts + meals)
     if (action === "log_activity" && activity) {
-      globalActivities.unshift({
+      // Find user's squad
+      const userMem = pData.memberships.find(
+        (m) => (groupId ? m.group_id === groupId : true) && m.user_id === userId
+      );
+      const targetGroupId = groupId || userMem?.group_id;
+      const targetSquad = pData.squads.find((s) => s.id === targetGroupId);
+
+      const newAct: ActivityFeedItem & { group_id?: string; invite_code?: string; created_at?: string } = {
         ...activity,
         id: activity.id || `act-${Date.now()}`,
         user_id: userId,
+        group_id: targetGroupId,
+        invite_code: inviteCode || targetSquad?.invite_code,
+        created_at: activity.created_at || new Date().toISOString(),
         timestamp: "Just now",
         is_real: true,
-      });
+      };
 
-      // Keep recent 100 activities
-      if (globalActivities.length > 100) {
-        globalActivities.pop();
+      pData.activities.unshift(newAct);
+
+      // Keep recent 300 activities
+      if (pData.activities.length > 300) {
+        pData.activities.pop();
       }
+
+      // Update user membership volume and workouts
+      if (userMem) {
+        if (volume) {
+          userMem.weekly_volume_kg = (userMem.weekly_volume_kg || 0) + Math.round(Number(volume));
+        }
+        if (workouts_increment) {
+          userMem.weekly_workouts_count = (userMem.weekly_workouts_count || 0) + Number(workouts_increment);
+        }
+      }
+
+      await writePersistenceData(pData);
 
       return NextResponse.json({
         success: true,
         message: "Activity logged to squad stream",
+        activity: newAct,
       });
+    }
+
+    // 5. CHEER ACTIVITY
+    if (action === "cheer" && activityId) {
+      const act = pData.activities.find((a) => a.id === activityId);
+      if (act) {
+        act.cheers_count = (act.cheers_count || 0) + 1;
+        await writePersistenceData(pData);
+      }
+      return NextResponse.json({ success: true });
     }
 
     return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });

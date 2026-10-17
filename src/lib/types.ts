@@ -232,6 +232,8 @@ export interface ActivityFeedItem {
   cheers_count?: number;
   has_cheered?: boolean;
   is_real?: boolean;
+  created_at?: string;
+  group_id?: string;
 }
 
 // =================== DIET & NUTRITION TYPES ===================
