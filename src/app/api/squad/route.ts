@@ -539,6 +539,27 @@ export async function POST(request: Request) {
 
     console.log("🌐 [API:POST] Request received. Action:", action, "userId:", userId, "inviteCode:", inviteCode, "name:", name);
 
+    if (action === "clear" || action === "reset") {
+      console.log("🧹 [API:POST:clear] Clearing all test squads, memberships, and activities...");
+      const resetState: SquadPersistenceData = {
+        squads: Object.entries(PRESET_SQUADS).map(([code, preset]) => ({
+          id: preset.id,
+          name: preset.name,
+          description: preset.description,
+          invite_code: code,
+          created_by: "system",
+          created_at: "2026-01-01T00:00:00.000Z",
+        })),
+        memberships: [],
+        activities: [],
+      };
+      await writePersistenceData(resetState);
+      return NextResponse.json({
+        success: true,
+        message: "All test squad, membership, and activity data cleared successfully.",
+      });
+    }
+
     if (!userId) {
       console.warn("🌐 [API:POST] Missing userId!");
       return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });

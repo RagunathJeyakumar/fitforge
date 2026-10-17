@@ -54,7 +54,7 @@ interface FitnessContextType {
   updatePrivacySettings: (settings: Partial<UserPrivacySettings>) => void;
   toggleDemoMode: (enable: boolean) => void;
   signInWithGoogle: () => Promise<void>;
-  clearToBlankState: () => void;
+  clearToBlankState: () => Promise<void> | void;
   logout: () => Promise<void>;
 
   // Exercises
@@ -1519,7 +1519,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, [isSupabaseConfigured]);
 
-  const clearToBlankState = useCallback(() => {
+  const clearToBlankState = useCallback(async () => {
     setIsDemoMode(false);
     setUser({
       id: `local-user-${Date.now()}`,
@@ -1539,14 +1539,36 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setChallenges([]);
     setActivityFeed([]);
     setLoggedMeals([]);
-    localStorage.setItem(STORAGE_KEYS.IS_DEMO, "false");
-    localStorage.removeItem(STORAGE_KEYS.SESSIONS);
-    localStorage.removeItem(STORAGE_KEYS.LOGGED_MEALS);
-    localStorage.removeItem(STORAGE_KEYS.METRICS);
-    localStorage.removeItem(STORAGE_KEYS.PRS);
-    localStorage.removeItem(STORAGE_KEYS.FAVORITES);
-    localStorage.removeItem(STORAGE_KEYS.GROUPS);
-  }, []);
+    setActiveWorkout(null);
+
+    if (typeof window !== "undefined") {
+      Object.values(STORAGE_KEYS).forEach((k) => {
+        try {
+          localStorage.removeItem(k);
+        } catch {}
+      });
+      try {
+        localStorage.removeItem("fitforge_guest_uid");
+        localStorage.removeItem("fitforge_guest_name");
+        localStorage.setItem(STORAGE_KEYS.IS_DEMO, "false");
+      } catch {}
+
+      if (user?.id) {
+        clearUserOfflineData(user.id);
+      }
+    }
+
+    try {
+      await fetch("/api/squad", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear" }),
+      });
+      console.log("🧹 [STORE:CLEAR] Test user data and squad persistence cleared successfully.");
+    } catch (e) {
+      console.warn("Could not clear server squad data:", e);
+    }
+  }, [user?.id]);
 
   const logout = useCallback(async () => {
     if (isSupabaseConfigured) {

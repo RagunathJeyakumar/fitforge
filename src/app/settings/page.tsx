@@ -37,6 +37,7 @@ export default function SettingsPage() {
     toggleDemoMode,
     isSupabaseConfigured,
     logout,
+    clearToBlankState,
   } = useFitness();
 
   const {
@@ -295,6 +296,33 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key`}
               >
                 <Trash2 className="h-3.5 w-3.5 mr-1" />
                 Clear Local Cache
+              </Button>
+            </div>
+
+            {/* Clear All Test User Data Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3 border-t border-white/5">
+              <div>
+                <span className="font-bold text-white block">Reset Test & Squad Data:</span>
+                <span className="text-muted-foreground text-xs">
+                  Clears local workout logs, food entries, test squad memberships, and resets all squad data.
+                </span>
+              </div>
+
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                onClick={async () => {
+                  if (confirm("Reset all test user data, workouts, meals, and squad memberships?")) {
+                    await clearToBlankState();
+                    alert("All test data cleared! Refreshing...");
+                    window.location.reload();
+                  }
+                }}
+                className="text-xs h-8 text-rose-400 border-rose-500/30 hover:bg-rose-500/10 shrink-0 font-bold"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                Clear Test Data
               </Button>
             </div>
           </div>
