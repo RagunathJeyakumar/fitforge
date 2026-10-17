@@ -58,6 +58,11 @@ interface SquadPersistenceData {
   })[];
 }
 
+// Global in-memory cache to ensure state survives serverless invocations and hot-reloads
+declare global {
+  var __FITFORGE_SQUAD_CACHE__: SquadPersistenceData | undefined;
+}
+
 const PERSISTENCE_FILE_PATH = path.join(
   process.cwd(),
   "src",
@@ -65,71 +70,119 @@ const PERSISTENCE_FILE_PATH = path.join(
   "data",
   "squad_persistence.json"
 );
+const TMP_FILE_PATH = path.join("/tmp", "squad_persistence.json");
 
 async function readPersistenceData(): Promise<SquadPersistenceData> {
+  // 1. If in-memory cache exists, use it as primary ground truth
+  if (globalThis.__FITFORGE_SQUAD_CACHE__) {
+    console.log(
+      "💾 [SQUAD-PERSIST:CACHE-HIT] Loaded from globalThis memory cache.",
+      `Squads: ${globalThis.__FITFORGE_SQUAD_CACHE__.squads.length},`,
+      `Memberships: ${globalThis.__FITFORGE_SQUAD_CACHE__.memberships.length},`,
+      `Activities: ${globalThis.__FITFORGE_SQUAD_CACHE__.activities.length}`
+    );
+    return globalThis.__FITFORGE_SQUAD_CACHE__;
+  }
+
+  let loadedData: SquadPersistenceData | null = null;
+
+  // 2. Try primary project file path (works locally and on persistent disks)
   try {
     if (fs.existsSync(PERSISTENCE_FILE_PATH)) {
       const raw = await fs.promises.readFile(PERSISTENCE_FILE_PATH, "utf-8");
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.squads)) {
-        // Ensure preset squads exist
-        Object.entries(PRESET_SQUADS).forEach(([code, preset]) => {
-          if (!parsed.squads.some((s: StoredSquad) => s.id === preset.id || s.invite_code?.toUpperCase() === code)) {
-            parsed.squads.push({
-              id: preset.id,
-              name: preset.name,
-              description: preset.description,
-              invite_code: code,
-              created_by: "system",
-              created_at: "2026-01-01T00:00:00.000Z",
-            });
-          }
-        });
-        if (!Array.isArray(parsed.memberships)) parsed.memberships = [];
-        if (!Array.isArray(parsed.activities)) parsed.activities = [];
-        return parsed;
+        loadedData = parsed;
+        console.log("💾 [SQUAD-PERSIST:FILE-READ] Successfully read primary file:", PERSISTENCE_FILE_PATH);
       }
     }
-  } catch (err) {
-    console.warn("Failed reading squad_persistence.json:", err);
+  } catch (err: any) {
+    console.warn("💾 [SQUAD-PERSIST:FILE-WARN] Primary file read skipped:", err?.message);
   }
 
-  // Fallback initial data
-  const initial: SquadPersistenceData = {
-    squads: Object.entries(PRESET_SQUADS).map(([code, preset]) => ({
-      id: preset.id,
-      name: preset.name,
-      description: preset.description,
-      invite_code: code,
-      created_by: "system",
-      created_at: "2026-01-01T00:00:00.000Z",
-    })),
-    memberships: [],
-    activities: [],
-  };
-
-  try {
-    const dir = path.dirname(PERSISTENCE_FILE_PATH);
-    if (!fs.existsSync(dir)) {
-      await fs.promises.mkdir(dir, { recursive: true });
+  // 3. Try /tmp fallback (works on serverless platforms like Vercel)
+  if (!loadedData) {
+    try {
+      if (fs.existsSync(TMP_FILE_PATH)) {
+        const raw = await fs.promises.readFile(TMP_FILE_PATH, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.squads)) {
+          loadedData = parsed;
+          console.log("💾 [SQUAD-PERSIST:TMP-READ] Successfully read /tmp file:", TMP_FILE_PATH);
+        }
+      }
+    } catch (err: any) {
+      console.warn("💾 [SQUAD-PERSIST:TMP-WARN] /tmp read skipped:", err?.message);
     }
-    await fs.promises.writeFile(PERSISTENCE_FILE_PATH, JSON.stringify(initial, null, 2), "utf-8");
-  } catch (e) {
-    console.warn("Failed initializing squad_persistence.json:", e);
   }
 
-  return initial;
+  // 4. Default initialization if no data exists
+  if (!loadedData) {
+    loadedData = {
+      squads: Object.entries(PRESET_SQUADS).map(([code, preset]) => ({
+        id: preset.id,
+        name: preset.name,
+        description: preset.description,
+        invite_code: code,
+        created_by: "system",
+        created_at: "2026-01-01T00:00:00.000Z",
+      })),
+      memberships: [],
+      activities: [],
+    };
+    console.log("💾 [SQUAD-PERSIST:INIT] Initialized default preset squads (FORGE-884, DAWN-200, WARRIOR-777)");
+  }
+
+  // Ensure preset squads exist
+  Object.entries(PRESET_SQUADS).forEach(([code, preset]) => {
+    if (!loadedData!.squads.some((s) => s.id === preset.id || s.invite_code?.toUpperCase() === code)) {
+      loadedData!.squads.push({
+        id: preset.id,
+        name: preset.name,
+        description: preset.description,
+        invite_code: code,
+        created_by: "system",
+        created_at: "2026-01-01T00:00:00.000Z",
+      });
+    }
+  });
+
+  if (!Array.isArray(loadedData.memberships)) loadedData.memberships = [];
+  if (!Array.isArray(loadedData.activities)) loadedData.activities = [];
+
+  // Store in global memory cache
+  globalThis.__FITFORGE_SQUAD_CACHE__ = loadedData;
+  return loadedData;
 }
 
 async function writePersistenceData(data: SquadPersistenceData): Promise<void> {
+  // Update in-memory global cache immediately
+  globalThis.__FITFORGE_SQUAD_CACHE__ = data;
+  console.log(
+    "💾 [SQUAD-PERSIST:WRITE] Updated global memory cache.",
+    `Total squads: ${data.squads.length},`,
+    `Total memberships: ${data.memberships.length},`,
+    `Total activities: ${data.activities.length}`
+  );
+
+  // Try writing to primary project file (local disk)
   try {
     const dir = path.dirname(PERSISTENCE_FILE_PATH);
     if (!fs.existsSync(dir)) {
       await fs.promises.mkdir(dir, { recursive: true });
     }
     await fs.promises.writeFile(PERSISTENCE_FILE_PATH, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Error writing squad_persistence.json:", err);
+    console.log("💾 [SQUAD-PERSIST:WRITE-SUCCESS] Wrote to", PERSISTENCE_FILE_PATH);
+  } catch (err: any) {
+    console.warn("💾 [SQUAD-PERSIST:WRITE-WARN] Primary file write failed (normal on Vercel):", err?.message);
+  }
+
+  // Try writing to /tmp (serverless writable disk)
+  try {
+    await fs.promises.writeFile(TMP_FILE_PATH, JSON.stringify(data, null, 2), "utf-8");
+    console.log("💾 [SQUAD-PERSIST:TMP-SUCCESS] Wrote to /tmp fallback:", TMP_FILE_PATH);
+  } catch (err: any) {
+    console.warn("💾 [SQUAD-PERSIST:TMP-WARN] /tmp write failed:", err?.message);
   }
 }
 
@@ -153,14 +206,16 @@ function formatTimeAgo(dateStr?: string): string {
 }
 
 // GET /api/squad?userId=<uuid>&groupId=<uuid>
-// Returns user squads, squad members, and squad activities (workouts + food logs)
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
     const requestedGroupId = searchParams.get("groupId");
 
+    console.log("🌐 [API:GET] /api/squad request received. userId:", userId, "groupId:", requestedGroupId);
+
     if (!userId) {
+      console.warn("🌐 [API:GET] Missing userId in request!");
       return NextResponse.json(
         { success: false, error: "Missing userId parameter" },
         { status: 400 }
@@ -175,7 +230,7 @@ export async function GET(request: Request) {
       "Content-Type": "application/json",
     };
 
-    // Load persistent squads and memberships
+    // Load persistent data
     const pData = await readPersistenceData();
 
     // 1. Fetch user's squad memberships from Supabase DB (if available)
@@ -187,9 +242,10 @@ export async function GET(request: Request) {
       );
       if (memberRes.ok) {
         dbMemberships = await memberRes.json();
+        console.log("🌐 [API:GET] Supabase returned memberships:", dbMemberships.length);
       }
-    } catch (e) {
-      // Supabase is secondary fallback
+    } catch (e: any) {
+      console.log("🌐 [API:GET] Supabase membership check skipped:", e?.message);
     }
 
     // Merge Supabase memberships into pData
@@ -219,9 +275,15 @@ export async function GET(request: Request) {
 
     // Check all squads this user belongs to
     const userMemberships = pData.memberships.filter((m) => m.user_id === userId);
+    console.log(
+      "🌐 [API:GET] User memberships found in persistence:",
+      userMemberships.length,
+      userMemberships.map((m) => ({ groupId: m.group_id, role: m.role }))
+    );
 
     // If user has not joined any squad, return strictly empty state!
     if (userMemberships.length === 0) {
+      console.log("🌐 [API:GET] User has not joined any squad. Returning inSquad: false (Solo Privacy).");
       return NextResponse.json({
         success: true,
         inSquad: false,
@@ -252,6 +314,7 @@ export async function GET(request: Request) {
       .filter(Boolean) as FriendGroup[];
 
     if (squads.length === 0) {
+      console.log("🌐 [API:GET] No valid squads found for user. Returning inSquad: false.");
       return NextResponse.json({
         success: true,
         inSquad: false,
@@ -270,6 +333,11 @@ export async function GET(request: Request) {
     const allSquadMemberships = pData.memberships.filter((m) => m.group_id === activeSquad.id);
     const memberUserIds = allSquadMemberships.map((m) => m.user_id).filter(Boolean);
 
+    console.log(
+      `🌐 [API:GET] Active squad: "${activeSquad.name}" (${activeSquad.invite_code}). Total members: ${allSquadMemberships.length}. Member IDs:`,
+      memberUserIds
+    );
+
     // Fetch real workout sessions & diet logs from Supabase for all squad members
     let squadSessions: any[] = [];
     let squadMeals: any[] = [];
@@ -282,8 +350,8 @@ export async function GET(request: Request) {
         ]);
         if (sessRes.ok) squadSessions = await sessRes.json();
         if (mealRes.ok) squadMeals = await mealRes.json();
-      } catch (e) {
-        // secondary
+      } catch (e: any) {
+        console.log("🌐 [API:GET] Supabase sessions/meals fetch skipped:", e?.message);
       }
     }
 
@@ -410,6 +478,10 @@ export async function GET(request: Request) {
       return timeB - timeA;
     });
 
+    console.log(
+      `🌐 [API:GET] Successfully returning squad "${activeSquad.name}". Members: ${members.length}, Activities: ${activities.length}`
+    );
+
     return NextResponse.json({
       success: true,
       inSquad: true,
@@ -419,7 +491,7 @@ export async function GET(request: Request) {
       activities,
     });
   } catch (err: any) {
-    console.error("Squad GET error:", err);
+    console.error("🌐 [API:GET] Critical Squad GET error:", err);
     return NextResponse.json(
       { success: false, error: err?.message || "Internal server error" },
       { status: 500 }
@@ -428,7 +500,6 @@ export async function GET(request: Request) {
 }
 
 // POST /api/squad
-// Actions: join, create, leave, log_activity, cheer
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -449,7 +520,10 @@ export async function POST(request: Request) {
       activityId,
     } = body;
 
+    console.log("🌐 [API:POST] Request received. Action:", action, "userId:", userId, "inviteCode:", inviteCode, "name:", name);
+
     if (!userId) {
+      console.warn("🌐 [API:POST] Missing userId!");
       return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });
     }
 
@@ -465,37 +539,21 @@ export async function POST(request: Request) {
     // Load persistent data
     const pData = await readPersistenceData();
 
-    // Ensure user profile in Supabase if possible
-    if (userProfile?.full_name) {
-      try {
-        await fetch(`${url}/rest/v1/profiles`, {
-          method: "POST",
-          headers: {
-            ...headers,
-            Prefer: "resolution=merge-duplicates",
-          },
-          body: JSON.stringify({
-            id: userId,
-            email: userProfile.email || "athlete@fitforge.app",
-            full_name: userProfile.full_name,
-            avatar_url: userProfile.avatar_url || null,
-            updated_at: new Date().toISOString(),
-          }),
-        });
-      } catch (e) {
-        // profile upsert warning ignored
-      }
-    }
-
     // 1. JOIN SQUAD BY CODE
     if (action === "join") {
       const code = (inviteCode || "").trim().toUpperCase();
+      console.log(`🌐 [API:POST:join] Attempting to join squad with code: "${code}". User:`, userId, userProfile?.full_name);
+
       if (!code) {
         return NextResponse.json({ success: false, error: "Invite code is required" }, { status: 400 });
       }
 
-      // Check persistence file first
+      // Check persistence data first
       let targetSquad = pData.squads.find((s) => s.invite_code?.toUpperCase() === code);
+      console.log(
+        "🌐 [API:POST:join] Persistence lookup result:",
+        targetSquad ? `Found squad: "${targetSquad.name}" (${targetSquad.id})` : "Not found in local memory"
+      );
 
       // Check preset squads
       if (!targetSquad && PRESET_SQUADS[code]) {
@@ -509,6 +567,7 @@ export async function POST(request: Request) {
           created_at: new Date().toISOString(),
         };
         pData.squads.push(targetSquad);
+        console.log(`🌐 [API:POST:join] Instantiated preset squad: "${preset.name}" (${code})`);
       }
 
       // Check Supabase if not found
@@ -523,14 +582,16 @@ export async function POST(request: Request) {
             if (existing && existing.length > 0 && existing[0]) {
               targetSquad = existing[0] as StoredSquad;
               pData.squads.push(targetSquad);
+              console.log(`🌐 [API:POST:join] Found squad in Supabase DB: "${targetSquad.name}" (${targetSquad.id})`);
             }
           }
-        } catch (e) {
-          // ignore
+        } catch (e: any) {
+          console.warn("🌐 [API:POST:join] Supabase lookup error:", e?.message);
         }
       }
 
       if (!targetSquad) {
+        console.warn(`🌐 [API:POST:join] Squad code "${code}" NOT FOUND anywhere! Available codes:`, pData.squads.map(s => s.invite_code));
         return NextResponse.json(
           {
             success: false,
@@ -542,7 +603,7 @@ export async function POST(request: Request) {
 
       // Ensure membership in persistence data
       const existingMem = pData.memberships.find(
-        (m) => m.group_id === targetSquad.id && m.user_id === userId
+        (m) => m.group_id === targetSquad!.id && m.user_id === userId
       );
 
       if (!existingMem) {
@@ -561,6 +622,7 @@ export async function POST(request: Request) {
           weekly_workouts_count: Number(initialWorkoutsCount) || 0,
           streak_weeks: Math.max(1, Number(initialWorkoutsCount) || 1),
         });
+        console.log(`🌐 [API:POST:join] Inserted new membership for user "${userProfile?.full_name || userId}" into squad "${targetSquad.name}"`);
       } else {
         if (userProfile?.full_name) {
           existingMem.profile = {
@@ -575,6 +637,7 @@ export async function POST(request: Request) {
         if (initialWorkoutsCount && Number(initialWorkoutsCount) > (existingMem.weekly_workouts_count || 0)) {
           existingMem.weekly_workouts_count = Number(initialWorkoutsCount);
         }
+        console.log(`🌐 [API:POST:join] User "${userId}" was already a member. Updated membership stats.`);
       }
 
       // Add any recent activities user brought along
@@ -583,16 +646,17 @@ export async function POST(request: Request) {
           if (!pData.activities.some((a) => a.id === act.id)) {
             pData.activities.unshift({
               ...act,
-              group_id: targetSquad.id,
-              invite_code: targetSquad.invite_code,
+              group_id: targetSquad!.id,
+              invite_code: targetSquad!.invite_code,
               created_at: act.created_at || new Date().toISOString(),
               is_real: true,
             });
           }
         });
+        console.log(`🌐 [API:POST:join] Attached ${recentActivities.length} recent activities to squad stream`);
       }
 
-      // Save to disk
+      // Save to disk & memory
       await writePersistenceData(pData);
 
       // Attempt Supabase insert in background
@@ -607,13 +671,16 @@ export async function POST(request: Request) {
             joined_at: new Date().toISOString(),
           }),
         });
-      } catch (e) {
-        // secondary
-      }
+      } catch (e) {}
 
       // Gather ALL members of targetSquad (both User A and User B!)
-      const allMembers = pData.memberships.filter((m) => m.group_id === targetSquad.id);
+      const allMembers = pData.memberships.filter((m) => m.group_id === targetSquad!.id);
       const memberUserIds = allMembers.map((m) => m.user_id);
+
+      console.log(
+        `🌐 [API:POST:join] ALL members of "${targetSquad.name}":`,
+        allMembers.map((m) => `${m.profile?.full_name || m.user_id} (${m.role})`)
+      );
 
       const members: GroupMember[] = allMembers.map((m) => ({
         id: m.id,
@@ -633,7 +700,7 @@ export async function POST(request: Request) {
 
       // Gather ALL activities for targetSquad
       const squadActivities: ActivityFeedItem[] = pData.activities
-        .filter((a) => a.group_id === targetSquad.id || memberUserIds.includes(a.user_id))
+        .filter((a) => a.group_id === targetSquad!.id || memberUserIds.includes(a.user_id))
         .map((a) => ({
           ...a,
           timestamp: formatTimeAgo(a.created_at || (a as any).timestamp),
@@ -643,6 +710,8 @@ export async function POST(request: Request) {
           const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
           return timeB - timeA;
         });
+
+      console.log(`🌐 [API:POST:join] Returning ${members.length} members and ${squadActivities.length} activities to joiner!`);
 
       return NextResponse.json({
         success: true,
@@ -673,7 +742,14 @@ export async function POST(request: Request) {
         inviteCode?.trim().toUpperCase() ||
         `FORGE-${Math.floor(100 + Math.random() * 900)}`;
 
-      const squadId = `00000000-0000-0000-0000-${Date.now().toString().slice(-12)}`;
+      const squadId =
+        (groupId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(groupId))
+          ? groupId
+          : (typeof crypto !== "undefined" && typeof (crypto as any).randomUUID === "function"
+              ? (crypto as any).randomUUID()
+              : `00000000-0000-0000-0000-${Date.now().toString().slice(-12).padStart(12, "0")}`);
+
+      console.log(`🌐 [API:POST:create] Creating squad "${squadName}" with code "${randomCode}". Creator:`, userId);
 
       const newSquad: StoredSquad = {
         id: squadId,
@@ -745,9 +821,7 @@ export async function POST(request: Request) {
             joined_at: new Date().toISOString(),
           }),
         });
-      } catch (e) {
-        // secondary
-      }
+      } catch (e) {}
 
       const founderMemberFormatted: GroupMember = {
         id: founderMem.id,
@@ -764,6 +838,8 @@ export async function POST(request: Request) {
         streak_weeks: 1,
         joined_at: founderMem.joined_at,
       };
+
+      console.log(`🌐 [API:POST:create] Successfully created squad "${squadName}" (${randomCode}). Persisted.`);
 
       return NextResponse.json({
         success: true,
@@ -794,6 +870,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "Missing groupId" }, { status: 400 });
       }
 
+      console.log(`🌐 [API:POST:leave] User ${userId} leaving group ${groupId}`);
+
       pData.memberships = pData.memberships.filter(
         (m) => !(m.group_id === groupId && m.user_id === userId)
       );
@@ -821,6 +899,8 @@ export async function POST(request: Request) {
       );
       const targetGroupId = groupId || userMem?.group_id;
       const targetSquad = pData.squads.find((s) => s.id === targetGroupId);
+
+      console.log(`🌐 [API:POST:log_activity] User ${userId} logging ${activity.action_type} for squad ${targetGroupId} (${targetSquad?.invite_code})`);
 
       const newAct: ActivityFeedItem & { group_id?: string; invite_code?: string; created_at?: string } = {
         ...activity,
@@ -861,6 +941,7 @@ export async function POST(request: Request) {
 
     // 5. CHEER ACTIVITY
     if (action === "cheer" && activityId) {
+      console.log(`🌐 [API:POST:cheer] Hype cheer for activity: ${activityId}`);
       const act = pData.activities.find((a) => a.id === activityId);
       if (act) {
         act.cheers_count = (act.cheers_count || 0) + 1;
@@ -871,7 +952,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });
   } catch (err: any) {
-    console.error("Squad POST error:", err);
+    console.error("🌐 [API:POST] Critical Squad POST error:", err);
     return NextResponse.json(
       { success: false, error: err?.message || "Internal server error" },
       { status: 500 }

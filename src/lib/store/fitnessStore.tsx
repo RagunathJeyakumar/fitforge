@@ -305,15 +305,20 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const isDemo = localStorage.getItem(STORAGE_KEYS.IS_DEMO);
       if (isDemo === "false") return null;
 
-      // Unique guest athlete ID per browser session so unauthenticated users don't collide
+      // Unique guest athlete ID and friendly identifier per browser session so unauthenticated users don't collide
       let guestId = localStorage.getItem("fitforge_guest_uid");
+      let guestName = localStorage.getItem("fitforge_guest_name");
       if (!guestId) {
-        guestId = `athlete-${Math.floor(1000 + Math.random() * 9000)}`;
+        const randNum = Math.floor(1000 + Math.random() * 9000);
+        guestId = `athlete-${randNum}`;
+        guestName = `Athlete #${randNum}`;
         localStorage.setItem("fitforge_guest_uid", guestId);
+        localStorage.setItem("fitforge_guest_name", guestName);
       }
       return {
         ...DEMO_CURRENT_USER,
         id: guestId,
+        full_name: guestName || `Athlete #${guestId.slice(-4)}`,
       };
     }
     return DEMO_CURRENT_USER;
@@ -1278,6 +1283,23 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, []);
 
+  const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    try {
+      if (typeof window !== "undefined" && isSupabaseConfigured) {
+        const supabase = getSupabaseBrowserClient();
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.access_token) {
+          headers["Authorization"] = `Bearer ${data.session.access_token}`;
+          console.log("🔑 [FITNESS-STORE] Forwarding Supabase auth token to API for user:", data.session.user.id);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not retrieve auth token:", e);
+    }
+    return headers;
+  }, [isSupabaseConfigured]);
+
   // FINISH ACTIVE WORKOUT
   const finishActiveWorkout = useCallback((): WorkoutSession | null => {
     if (!activeWorkout) return null;
@@ -1388,19 +1410,25 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // Sync activity to squad stream in background
       if (user?.id) {
-        fetch("/api/squad", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "log_activity",
-            userId: user.id,
-            groupId: groups[0]?.id,
-            inviteCode: groups[0]?.invite_code,
-            activity: feedItem,
-            volume: totalVolume,
-            workouts_increment: 1,
-          }),
-        }).catch(() => {});
+        console.log("💪 [STORE:WORKOUT] Syncing workout to squad:", feedItem.workout_name, feedItem.volume_kg, "kg for squads:", groups.map(g => g.invite_code));
+        getAuthHeaders().then((headers) => {
+          fetch("/api/squad", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              action: "log_activity",
+              userId: user.id,
+              groupId: groups[0]?.id,
+              inviteCode: groups[0]?.invite_code,
+              activity: feedItem,
+              volume: totalVolume,
+              workouts_increment: 1,
+            }),
+          })
+            .then((r) => r.json())
+            .then((d) => console.log("💪 [STORE:WORKOUT] Workout sync response:", d))
+            .catch((err) => console.warn("💪 [STORE:WORKOUT] Workout sync error:", err));
+        });
       }
     }
 
@@ -1409,7 +1437,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     localStorage.removeItem(STORAGE_KEYS.ACTIVE_WORKOUT);
 
     return finishedSession;
-  }, [activeWorkout, exercises, personalRecords, user, groups]);
+  }, [activeWorkout, exercises, personalRecords, user, groups, getAuthHeaders]);
 
   const cancelActiveWorkout = useCallback(() => {
     setActiveWorkout(null);
@@ -1548,11 +1576,16 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const q = new URLSearchParams({ userId: targetUserId });
       if (customGroupId) q.set("groupId", customGroupId);
 
-      const res = await fetch(`/api/squad?${q.toString()}`);
+      const authHeaders = await getAuthHeaders();
+      console.log("⚡ [STORE:REFRESH] Polling /api/squad for userId:", targetUserId, "groupId:", customGroupId);
+
+      const res = await fetch(`/api/squad?${q.toString()}`, { headers: authHeaders });
       if (res.ok) {
         const data = await res.json();
+        console.log("⚡ [STORE:REFRESH] Poll response. inSquad:", data.inSquad, "squads:", data.squads?.length, "members:", data.members?.length, "activities:", data.activities?.length);
         if (data.success) {
           if (!data.inSquad || !data.squads || data.squads.length === 0) {
+            console.log("⚡ [STORE:REFRESH] User is not in any squad. Clearing social state for privacy.");
             setGroups([]);
             setGroupMembers([]);
             setChallenges([]);
@@ -1562,6 +1595,7 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
             localStorage.setItem(STORAGE_KEYS.CHALLENGES, JSON.stringify([]));
             localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify([]));
           } else {
+            console.log("⚡ [STORE:REFRESH] Updating live squad members:", data.members?.map((m: any) => m.user_profile?.full_name), "activities count:", data.activities?.length);
             setGroups(data.squads);
             setGroupMembers(data.members || []);
             setActivityFeed(data.activities || []);
@@ -1572,14 +1606,19 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       }
     } catch (e) {
-      console.warn("Could not refresh squad data:", e);
+      console.warn("⚡ [STORE:REFRESH] Could not refresh squad data:", e);
     }
-  }, [user?.id]);
+  }, [user?.id, getAuthHeaders]);
 
   const createGroup = useCallback((name: string, description: string): FriendGroup => {
     const code = `FORGE-${Math.floor(100 + Math.random() * 900)}`;
-    const newGroupId = `grp-${Date.now()}`;
+    const newGroupId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `00000000-0000-4000-8000-${Date.now().toString().slice(-12).padStart(12, "0")}`;
     const liveVolume = completedSessions.reduce((acc, s) => acc + (s.total_volume_kg || 0), 0);
+
+    console.log("⚡ [STORE:CREATE] createGroup called. Name:", name, "Code:", code, "User:", user?.id, user?.full_name);
 
     const newGroup: FriendGroup = {
       id: newGroupId,
@@ -1656,53 +1695,58 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Sync to DB & API
     if (user?.id) {
-      fetch("/api/squad", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create",
-          userId: user.id,
-          name: name.trim(),
-          description: description.trim(),
-          inviteCode: code,
-          initialVolume: liveVolume,
-          initialWorkoutsCount: completedSessions.length || 1,
-          recentActivities,
-          userProfile: {
-            full_name: user.full_name,
-            avatar_url: user.avatar_url,
-            email: user.email,
-          },
-        }),
-      })
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.success && d.squad) {
-            setGroups((prev) => [d.squad, ...prev.filter((g) => g.id !== newGroupId && g.id !== d.squad.id)]);
-            if (d.members) setGroupMembers(d.members);
-            if (d.activities) setActivityFeed(d.activities);
-            localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify([d.squad]));
-            if (d.members) localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(d.members));
-            if (d.activities) localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(d.activities));
-          }
+      getAuthHeaders().then((headers) => {
+        fetch("/api/squad", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            action: "create",
+            userId: user.id,
+            name: name.trim(),
+            description: description.trim(),
+            inviteCode: code,
+            groupId: newGroupId,
+            initialVolume: liveVolume,
+            initialWorkoutsCount: completedSessions.length || 1,
+            recentActivities,
+            userProfile: {
+              full_name: user.full_name,
+              avatar_url: user.avatar_url,
+              email: user.email,
+            },
+          }),
         })
-        .catch((e) => console.warn("Squad create sync error:", e));
+          .then((r) => r.json())
+          .then((d) => {
+            console.log("⚡ [STORE:CREATE] Server response:", d);
+            if (d.success && d.squad) {
+              setGroups((prev) => [d.squad, ...prev.filter((g) => g.id !== newGroupId && g.id !== d.squad.id)]);
+              if (d.members) setGroupMembers(d.members);
+              if (d.activities) setActivityFeed(d.activities);
+              localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify([d.squad]));
+              if (d.members) localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(d.members));
+              if (d.activities) localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(d.activities));
+              console.log("⚡ [STORE:CREATE] Updated state with server squad:", d.squad.name, "Code:", d.squad.invite_code);
+            }
+          })
+          .catch((e) => console.warn("⚡ [STORE:CREATE] Squad create sync error:", e));
+      });
     }
 
     return newGroup;
-  }, [user, completedSessions]);
+  }, [user, completedSessions, getAuthHeaders]);
 
   const joinGroupByCode = useCallback(async (code: string): Promise<boolean> => {
     const formatted = code.trim().toUpperCase();
-    if (!formatted) return false;
+    console.log("⚡ [STORE:JOIN] joinGroupByCode invoked with code:", formatted, "User:", user?.id, user?.full_name);
 
-    // Check if already in squad
-    const existing = groups.find((g) => g.invite_code.toUpperCase() === formatted);
-    if (existing) {
-      return true;
+    if (!formatted) {
+      console.warn("⚡ [STORE:JOIN] Empty code provided!");
+      return false;
     }
 
     const liveVolume = completedSessions.reduce((acc, s) => acc + (s.total_volume_kg || 0), 0);
+    console.log("⚡ [STORE:JOIN] User live volume:", liveVolume, "completed sessions:", completedSessions.length);
 
     const recentActivities = completedSessions.slice(0, 3).map((s) => ({
       id: `sess-${s.id}-${Date.now()}`,
@@ -1721,9 +1765,12 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
 
     try {
+      const authHeaders = await getAuthHeaders();
+      console.log("⚡ [STORE:JOIN] Sending POST /api/squad with auth headers present:", Boolean(authHeaders["Authorization"]));
+
       const res = await fetch("/api/squad", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({
           action: "join",
           userId: user?.id || "user-current",
@@ -1739,20 +1786,33 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }),
       });
 
+      console.log("⚡ [STORE:JOIN] HTTP response status:", res.status);
       const data = await res.json();
+      console.log("⚡ [STORE:JOIN] API returned data:", data);
+
       if (data.success && data.squad) {
-        // Successfully joined existing squad with ALL members and ALL activities!
+        console.log(
+          "⚡ [STORE:JOIN] SUCCESS! Joined squad:", data.squad.name,
+          "Squad ID:", data.squad.id,
+          "Total members returned:", data.members?.length,
+          data.members?.map((m: any) => m.user_profile?.full_name),
+          "Total activities returned:", data.activities?.length
+        );
+
+        // Update groups state
         setGroups((prev) => {
           const updated = [data.squad, ...prev.filter((g) => g.id !== data.squad.id)];
           localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(updated));
           return updated;
         });
 
+        // Update members state (contains both User A and User B!)
         if (data.members) {
           setGroupMembers(data.members);
           localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(data.members));
         }
 
+        // Update activities feed (contains both User A and User B activities!)
         if (data.activities) {
           setActivityFeed(data.activities);
           localStorage.setItem(STORAGE_KEYS.ACTIVITY_FEED, JSON.stringify(data.activities));
@@ -1780,15 +1840,16 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         return true;
       } else {
+        console.warn("⚡ [STORE:JOIN] Join squad rejected by API:", data.error);
         alert(data.error || `Squad code "${formatted}" not found. Verify the code with your squad founder.`);
         return false;
       }
     } catch (err) {
-      console.error("Squad join error:", err);
+      console.error("⚡ [STORE:JOIN] Critical Network/Fetch error during join:", err);
       alert(`Could not connect to join squad "${formatted}". Please check your connection.`);
       return false;
     }
-  }, [groups, user, completedSessions]);
+  }, [groups, user, completedSessions, getAuthHeaders]);
 
   const leaveGroup = useCallback((groupId: string) => {
     setGroups((prev) => {
@@ -1972,21 +2033,27 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         // Sync meal activity to squad stream in background
         if (user?.id) {
-          fetch("/api/squad", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "log_activity",
-              userId: user.id,
-              groupId: groups[0]?.id,
-              inviteCode: groups[0]?.invite_code,
-              activity: mealFeedItem,
-            }),
-          }).catch(() => {});
+          console.log("🥗 [STORE:MEAL] Syncing meal to squad:", mealFeedItem.food_name, mealFeedItem.calories, "kcal for squads:", groups.map(g => g.invite_code));
+          getAuthHeaders().then((headers) => {
+            fetch("/api/squad", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                action: "log_activity",
+                userId: user.id,
+                groupId: groups[0]?.id,
+                inviteCode: groups[0]?.invite_code,
+                activity: mealFeedItem,
+              }),
+            })
+              .then((r) => r.json())
+              .then((d) => console.log("🥗 [STORE:MEAL] Meal sync response:", d))
+              .catch((err) => console.warn("🥗 [STORE:MEAL] Meal sync error:", err));
+          });
         }
       }
     },
-    [user, groups]
+    [user, groups, getAuthHeaders]
   );
 
   const updateMealEntryServings = useCallback((id: string, newServings: number) => {

@@ -57,14 +57,28 @@ export default function SocialPage() {
   const currentGroup =
     groups.find((g) => g.id === activeGroupId) || groups[0] || null;
 
+  // Mount and status logger
+  useEffect(() => {
+    console.log(
+      "🏋️ [UI:SOCIAL:STATUS] Social page state:",
+      `User: "${user?.full_name || 'Athlete'}" (${user?.id || 'none'}),`,
+      `Active Squad: "${currentGroup?.name || 'None'}" (${currentGroup?.invite_code || 'N/A'}),`,
+      `Total Squads: ${groups.length},`,
+      `Total Members: ${groupMembers.length},`,
+      `Activity Feed Count: ${activityFeed.length}`
+    );
+  }, [user?.id, user?.full_name, currentGroup?.name, currentGroup?.invite_code, groups.length, groupMembers.length, activityFeed.length]);
+
   // Poll for live friend workouts and food logs while squad is active
   useEffect(() => {
     if (!currentGroup || !user?.id) return;
+    console.log(`⚡ [UI:SOCIAL:POLL] Polling active for squad "${currentGroup.name}" (${currentGroup.invite_code})`);
     const interval = setInterval(() => {
+      console.log(`⚡ [UI:SOCIAL:POLL] Fetching live squad activity stream for ${currentGroup.invite_code}...`);
       refreshSquadData(user.id, currentGroup.id);
     }, 12000);
     return () => clearInterval(interval);
-  }, [currentGroup?.id, user?.id, refreshSquadData]);
+  }, [currentGroup?.id, currentGroup?.name, currentGroup?.invite_code, user?.id, refreshSquadData]);
 
   const handleCopyCode = () => {
     if (!currentGroup) return;
@@ -74,11 +88,13 @@ export default function SocialPage() {
   };
 
   const handleJoin = async (codeToJoin?: string) => {
-    const code = (codeToJoin || inviteCodeInput).trim();
+    const code = (codeToJoin || inviteCodeInput).trim().toUpperCase();
+    console.log("⚡ [UI:SOCIAL:JOIN] handleJoin clicked with code:", code, "user:", user?.id, user?.full_name);
     if (!code) return;
     setIsJoining(true);
     try {
       const ok = await joinGroupByCode(code);
+      console.log("⚡ [UI:SOCIAL:JOIN] joinGroupByCode finished. Success:", ok);
       if (ok) {
         setShowJoinModal(false);
         setInviteCodeInput("");
@@ -91,6 +107,7 @@ export default function SocialPage() {
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupNameInput.trim()) return;
+    console.log("⚡ [UI:SOCIAL:CREATE] User submitted Create Squad form:", groupNameInput, groupDescInput);
     const newGrp = createGroup(groupNameInput.trim(), groupDescInput.trim());
     setActiveGroupId(newGrp.id);
     setShowCreateModal(false);
@@ -100,6 +117,7 @@ export default function SocialPage() {
 
   const handleLeaveCurrent = () => {
     if (!currentGroup) return;
+    console.log("⚡ [UI:SOCIAL:LEAVE] Leaving squad:", currentGroup.name, currentGroup.id);
     leaveGroup(currentGroup.id);
     setShowLeaveModal(false);
   };
