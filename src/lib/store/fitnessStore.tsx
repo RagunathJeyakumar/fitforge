@@ -23,6 +23,7 @@ import {
 import { INITIAL_EXERCISES } from "../data/initialExercises";
 import { DEFAULT_WORKOUT_TEMPLATES } from "../data/defaultTemplates";
 import { TAMIL_NADU_FOODS } from "../data/tamilNaduFoods";
+import { COMPREHENSIVE_FOODS } from "../data/comprehensiveFoods";
 import {
   DEMO_CURRENT_USER,
   DEMO_FRIENDS,
@@ -409,7 +410,57 @@ export const FitnessProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [nutritionTargets, setNutritionTargets] = useState<NutritionDailyTargets>(DEFAULT_NUTRITION_TARGETS);
 
   const foodDatabase = useMemo(() => {
-    return [...customFoods, ...TAMIL_NADU_FOODS];
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+    const consolidated: FoodItem[] = [];
+
+    const processFood = (food: FoodItem) => {
+      const normalizedName = food.name.trim().toLowerCase();
+      if (seenIds.has(food.id) || seenNames.has(normalizedName)) {
+        return;
+      }
+      seenIds.add(food.id);
+      seenNames.add(normalizedName);
+
+      // Normalize missing fields for legacy or custom foods
+      const servingSize = food.serving_size_grams > 0 ? food.serving_size_grams : 100;
+      const calPer100g = food.calories_per_100g && food.calories_per_100g > 0
+        ? food.calories_per_100g
+        : Math.round((food.calories / servingSize) * 100);
+
+      let inferredDietary: "veg" | "non_veg" | "vegan" | "egg" = food.dietary_type || "veg";
+      if (!food.dietary_type) {
+        const lowerName = food.name.toLowerCase();
+        if (lowerName.includes("chicken") || lowerName.includes("mutton") || lowerName.includes("fish") || lowerName.includes("prawn") || lowerName.includes("beef") || lowerName.includes("pork") || lowerName.includes("meat")) {
+          inferredDietary = "non_veg";
+        } else if (lowerName.includes("egg") || lowerName.includes("omelette") || lowerName.includes("albumin")) {
+          inferredDietary = "egg";
+        } else if (lowerName.includes("milk") || lowerName.includes("paneer") || lowerName.includes("curd") || lowerName.includes("yogurt") || lowerName.includes("cheese") || lowerName.includes("ghee") || lowerName.includes("butter")) {
+          inferredDietary = "veg";
+        } else {
+          inferredDietary = "vegan";
+        }
+      }
+
+      consolidated.push({
+        ...food,
+        calories_per_100g: calPer100g,
+        dietary_type: inferredDietary,
+        goal_suitability: food.goal_suitability && food.goal_suitability.length > 0
+          ? food.goal_suitability
+          : food.protein_g >= 15
+            ? ["muscle_gain", "fat_loss", "general_health"]
+            : ["general_health"],
+        preparation_state: food.preparation_state || "cooked",
+      });
+    };
+
+    // Priority: Custom user foods first, then Comprehensive Master List, then Regional Staples
+    customFoods.forEach(processFood);
+    COMPREHENSIVE_FOODS.forEach(processFood);
+    TAMIL_NADU_FOODS.forEach(processFood);
+
+    return consolidated;
   }, [customFoods]);
 
   // Load state from local storage on mount

@@ -29,6 +29,7 @@ import { useFitness } from "@/lib/store/fitnessStore";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { FoodChart } from "@/components/nutrition/FoodChart";
 import {
   MealType,
   FoodItem,
@@ -48,14 +49,20 @@ const MEAL_TIMES: { type: MealType; label: string; tamilLabel: string; timeHint:
 
 const CATEGORY_TABS: { key: string; label: string; tamil: string }[] = [
   { key: "all", label: "All Items", tamil: "அனைத்தும்" },
-  { key: "tandoori_grills", label: "🍗 Tandoori & Grills", tamil: "தந்தூரி & கிரில்" },
-  { key: "chinese_indochinese", label: "🥢 Chinese & Indo-Chinese", tamil: "சைனீஸ் & நூடுல்ஸ்" },
+  { key: "breads_bakery", label: "🍞 Breads & Bakery", tamil: "ரொட்டி & பேக்கரி" },
+  { key: "spreads_toppings", label: "🍯 Spreads & Toppings", tamil: "ஸ்ப்ரெட்ஸ்" },
+  { key: "fruits", label: "🍎 Fruits", tamil: "பழங்கள்" },
+  { key: "vegetables", label: "🥦 Vegetables", tamil: "காய்கறிகள்" },
+  { key: "grains_cereals", label: "🌾 Grains & Millets", tamil: "தானியங்கள்" },
+  { key: "pulses_legumes", label: "🫘 Pulses & Dals", tamil: "பருப்பு" },
+  { key: "dairy_cheese", label: "🥛 Dairy & Paneer", tamil: "பால் & பனீர்" },
+  { key: "poultry_meat_eggs", label: "🍗 Meat, Fish & Eggs", tamil: "முட்டை & அசைவம்" },
+  { key: "nuts_seeds", label: "🥜 Nuts & Seeds", tamil: "விதைகள்" },
+  { key: "oils_condiments", label: "🫒 Oils & Condiments", tamil: "எண்ணெய்" },
+  { key: "healthy_snacks", label: "🍿 Healthy Snacks", tamil: "சிற்றுண்டி" },
   { key: "tiffin_breakfast", label: "🥞 Tiffin & Breakfast", tamil: "டிபன்" },
   { key: "rice_curries", label: "🍛 Rice & Curries", tamil: "சாதம் & குழம்பு" },
   { key: "non_veg_specialties", label: "🥩 Non-Veg Specialties", tamil: "அசைவ உணவுகள்" },
-  { key: "fitness_staples", label: "⚡ Gym High-Protein", tamil: "ஜிம் உணவுகள்" },
-  { key: "lentils_sundal", label: "🌱 Lentils & Sundal", tamil: "சுண்டல் & பயறு" },
-  { key: "snacks_beverages", label: "🥥 Drinks & Snacks", tamil: "பானங்கள்" },
 ];
 
 export default function NutritionPage() {
@@ -80,6 +87,7 @@ export default function NutritionPage() {
   };
 
   const [selectedDate, setSelectedDate] = useState<string>(getTodayStr);
+  const [activeView, setActiveView] = useState<"chart" | "tracker">("chart");
 
   // Modal states
   const [selectedMealForAdd, setSelectedMealForAdd] = useState<MealType | null>(null);
@@ -243,24 +251,11 @@ export default function NutritionPage() {
       if (dietaryFilter === "custom") {
         matchesDietary = Boolean(food.is_custom);
       } else if (dietaryFilter === "high_protein") {
-        matchesDietary = food.protein_g >= 20;
+        matchesDietary = food.protein_g >= 15;
       } else if (dietaryFilter === "veg") {
-        matchesDietary =
-          food.category === "tiffin_breakfast" ||
-          food.category === "lentils_sundal" ||
-          food.name.toLowerCase().includes("veg") ||
-          food.name.toLowerCase().includes("paneer") ||
-          food.name.toLowerCase().includes("gobi") ||
-          food.name.toLowerCase().includes("mushroom") ||
-          food.name.toLowerCase().includes("sambar") ||
-          food.name.toLowerCase().includes("dal");
+        matchesDietary = food.dietary_type === "veg" || food.dietary_type === "vegan";
       } else if (dietaryFilter === "non_veg") {
-        matchesDietary =
-          food.name.toLowerCase().includes("chicken") ||
-          food.name.toLowerCase().includes("mutton") ||
-          food.name.toLowerCase().includes("fish") ||
-          food.name.toLowerCase().includes("prawn") ||
-          food.name.toLowerCase().includes("egg");
+        matchesDietary = food.dietary_type === "non_veg" || food.dietary_type === "egg";
       }
 
       return matchesSearch && matchesCategory && matchesDietary;
@@ -381,7 +376,72 @@ export default function NutritionPage() {
           </div>
         </div>
 
-        {/* Dynamic Date Control Bar */}
+        {/* Top View Selector: Food Chart & Meal Planner vs Daily Tracker */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-2 bg-charcoal-900/90 border border-white/10 rounded-2xl shadow-lg">
+          <div className="flex items-center gap-2 p-1 bg-charcoal-950 rounded-xl border border-white/5 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setActiveView("chart")}
+              className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                activeView === "chart"
+                  ? "bg-lime-electric text-charcoal-950 shadow-lime-sm font-black"
+                  : "text-muted-foreground hover:text-white"
+              }`}
+            >
+              <UtensilsCrossed className="h-4 w-4" />
+              Food Chart & Meal Planner
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView("tracker")}
+              className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                activeView === "tracker"
+                  ? "bg-lime-electric text-charcoal-950 shadow-lime-sm font-black"
+                  : "text-muted-foreground hover:text-white"
+              }`}
+            >
+              <Calendar className="h-4 w-4" />
+              Daily Eating Windows
+              {daysMeals.length > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                    activeView === "tracker"
+                      ? "bg-charcoal-950 text-lime-electric"
+                      : "bg-white/10 text-white"
+                  }`}
+                >
+                  {daysMeals.length} logged
+                </span>
+              )}
+            </button>
+          </div>
+
+          <div className="text-xs text-muted-foreground flex items-center gap-2 px-2">
+            {activeView === "chart" ? (
+              <span>Plan meals with 150+ everyday Indian foods & calculate combined macros</span>
+            ) : (
+              <span>Active eating windows for <strong className="text-white font-mono">{formattedDate}</strong></span>
+            )}
+          </div>
+        </div>
+
+        {activeView === "chart" ? (
+          <FoodChart
+            foods={foodDatabase}
+            onBatchLogMeals={(items, mealType) => {
+              items.forEach(({ food, servings }) => {
+                addMealEntry(mealType, food, servings, selectedDate);
+              });
+              setActiveView("tracker");
+            }}
+            onQuickLogFood={(food, mealType, servings) => {
+              addMealEntry(mealType, food, servings, selectedDate);
+              setActiveView("tracker");
+            }}
+          />
+        ) : (
+          <div className="space-y-8 animate-in fade-in duration-200">
+            {/* Dynamic Date Control Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-charcoal-900/90 border border-white/5 rounded-2xl shadow-lg">
           <div className="flex items-center gap-2">
             <button
@@ -922,6 +982,8 @@ export default function NutritionPage() {
             })}
           </div>
         </div>
+      </div>
+    )}
 
         {/* Modal: Select Food & Quantity */}
         {selectedMealForAdd && (

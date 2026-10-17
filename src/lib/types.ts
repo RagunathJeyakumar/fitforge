@@ -247,13 +247,28 @@ export type MealType =
   | "post_workout";
 
 export type FoodCategory =
+  | "breads_bakery"
+  | "spreads_toppings"
+  | "fruits"
+  | "vegetables"
+  | "grains_cereals"
+  | "pulses_legumes"
+  | "dairy_cheese"
+  | "poultry_meat_eggs"
+  | "nuts_seeds"
+  | "oils_condiments"
+  | "healthy_snacks"
+  | "fitness_staples"
   | "tiffin_breakfast"
   | "rice_curries"
   | "non_veg_specialties"
   | "chinese_indochinese"
   | "lentils_sundal"
-  | "snacks_beverages"
-  | "fitness_staples";
+  | "snacks_beverages";
+
+export type DietaryType = "veg" | "non_veg" | "vegan" | "egg";
+export type NutritionGoal = "fat_loss" | "muscle_gain" | "general_health";
+export type PreparationState = "raw" | "cooked" | "packaged";
 
 export interface MicronutrientProfile {
   vitamin_a_mcg: number;
@@ -279,7 +294,8 @@ export interface FoodItem {
   name: string;
   tamil_name: string;
   category: FoodCategory;
-  serving_unit: string; // e.g. "piece (60g)", "cup cooked (150g)", "bowl (200g)", "100g", "glass (200ml)"
+  subcategory?: string; // e.g. "Whole Grain Bread", "Nut Butter", "Citrus Fruit", "Cruciferous"
+  serving_unit: string; // e.g. "2 slices (60g)", "1 medium (150g)", "1 tbsp (16g)", "1 cup cooked (150g)", "100g"
   serving_size_grams: number;
   calories: number;
   protein_g: number;
@@ -289,6 +305,11 @@ export interface FoodItem {
   bad_nutrients: BadNutrientProfile;
   micronutrients: MicronutrientProfile;
   is_custom?: boolean;
+  dietary_type?: DietaryType;
+  goal_suitability?: NutritionGoal[];
+  preparation_state?: PreparationState;
+  suggested_timing?: (MealType | string)[];
+  calories_per_100g?: number;
 }
 
 export interface LoggedMealEntry {
