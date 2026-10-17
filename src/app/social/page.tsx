@@ -209,118 +209,287 @@ export default function SocialPage() {
         )}
 
         {/* Squad Profile Banner OR No Squad Joined Banner */}
-        {currentGroup ? (
-          <Card className="p-6 sm:p-8 border-white/5 bg-gradient-to-r from-charcoal-900 via-charcoal-900 to-charcoal-850 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+        {!currentGroup ? (
+          /* ================= ZERO FRIENDS ACTIVITY PRIVATE HUB ================= */
+          <div className="space-y-6">
+            {/* Hero Privacy Card */}
+            <Card className="p-6 sm:p-10 border-white/10 bg-gradient-to-br from-charcoal-900 via-charcoal-900 to-charcoal-850 relative overflow-hidden rounded-3xl shadow-2xl">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-lime-electric/5 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-0 left-0 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="h-9 w-9 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-black text-base border border-cyan-500/30">
-                    {currentGroup.name.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-xl sm:text-2xl font-black text-white">
-                        {currentGroup.name}
-                      </h2>
-                      {currentGroup.is_user_admin && (
-                        <Badge variant="gold" className="text-[10px] text-amber-300">
-                          Founder
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
+              <div className="relative z-10 max-w-2xl mx-auto text-center space-y-4">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>Private Squad Network • E2E Encrypted</span>
                 </div>
 
-                <p className="text-xs sm:text-sm text-muted-foreground max-w-xl">
-                  {currentGroup.description}
+                <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight leading-tight">
+                  Solo Athlete — Not Joined to Any Squad
+                </h2>
+
+                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                  FitForge enforces strict squad-level privacy: friends&apos; real-time workout logs, personal record breakthroughs, and daily nutrition fuel feeds are only shared within verified squads. Join your friends&apos; squad or create a new squad to unlock the live leaderboard and activity stream.
                 </p>
 
-                <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-muted-foreground pt-1">
-                  <span className="text-white font-bold">
-                    {currentGroupMembers.length} Active Lifters
-                  </span>
-                  <span>•</span>
-                  <span>Weekly Reset: Mondays 00:00 UTC</span>
-                  <span>•</span>
-                  <button
-                    onClick={() => setShowLeaveModal(true)}
-                    className="text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1 font-bold"
+                {/* Direct Invite Code Entry */}
+                <div className="pt-2 max-w-md mx-auto">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleJoin();
+                    }}
+                    className="flex flex-col sm:flex-row items-center gap-2 p-1.5 bg-charcoal-950/80 border border-white/10 rounded-2xl shadow-inner"
                   >
-                    <LogOut className="h-3 w-3" /> Leave Squad
-                  </button>
+                    <input
+                      type="text"
+                      placeholder="Enter Squad Code (e.g. FORGE-884)"
+                      value={inviteCodeInput}
+                      onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
+                      className="w-full bg-transparent px-4 py-2.5 text-sm text-white font-mono uppercase font-bold focus:outline-none tracking-wider text-center sm:text-left"
+                    />
+                    <Button
+                      type="submit"
+                      variant="default"
+                      size="sm"
+                      className="w-full sm:w-auto font-bold h-10 px-5 shadow-lime-sm shrink-0"
+                    >
+                      Join Squad ⚡
+                    </Button>
+                  </form>
                 </div>
               </div>
+            </Card>
 
-              {/* Invite Code Box */}
-              <div className="bg-charcoal-950/85 border border-white/10 rounded-2xl p-4 flex flex-col items-center sm:items-end gap-2 shrink-0">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Private Invite Code
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl font-mono font-black text-lime-electric tracking-widest px-3 py-1 bg-charcoal-900 rounded-lg border border-lime-electric/30">
-                    {currentGroup.invite_code}
-                  </span>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleCopyCode}
-                    className="h-9 px-3 text-xs"
-                    title="Copy code"
-                  >
-                    {copiedCode ? (
-                      <Check className="h-4 w-4 text-lime-electric" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
+            {/* Quick-Join Preset Squads */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Preset 1: Iron Forge Syndicate */}
+              <Card className="p-5 border-white/5 bg-charcoal-900/80 hover:border-lime-electric/30 transition-all rounded-2xl flex flex-col justify-between group">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">⚔️</span>
+                    <Badge variant="cyan" className="text-[10px] font-mono font-bold">
+                      FORGE-884
+                    </Badge>
+                  </div>
+                  <h4 className="text-base font-bold text-white group-hover:text-lime-electric transition-colors">
+                    Iron Forge Syndicate
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Heavy compound powerlifting, PR breakers, and serious volume chasing.
+                  </p>
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Share with your gym partners to join this leaderboard.
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleJoin("FORGE-884")}
+                  className="w-full mt-4 text-xs font-bold border-white/10 hover:border-lime-electric/50"
+                >
+                  Join Iron Forge
+                </Button>
+              </Card>
+
+              {/* Preset 2: Dawn Patrol */}
+              <Card className="p-5 border-white/5 bg-charcoal-900/80 hover:border-lime-electric/30 transition-all rounded-2xl flex flex-col justify-between group">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">🌅</span>
+                    <Badge variant="gold" className="text-[10px] font-mono font-bold">
+                      DAWN-200
+                    </Badge>
+                  </div>
+                  <h4 className="text-base font-bold text-white group-hover:text-lime-electric transition-colors">
+                    Dawn Patrol 5AM Lifters
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Early morning discipline, strict consistency, and raw compound volume.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleJoin("DAWN-200")}
+                  className="w-full mt-4 text-xs font-bold border-white/10 hover:border-lime-electric/50"
+                >
+                  Join Dawn Patrol
+                </Button>
+              </Card>
+
+              {/* Preset 3: Warrior Calisthenics */}
+              <Card className="p-5 border-white/5 bg-charcoal-900/80 hover:border-lime-electric/30 transition-all rounded-2xl flex flex-col justify-between group">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">⚡</span>
+                    <Badge variant="default" className="text-[10px] font-mono font-bold">
+                      WARRIOR-777
+                    </Badge>
+                  </div>
+                  <h4 className="text-base font-bold text-white group-hover:text-lime-electric transition-colors">
+                    Warrior Power & Athletic
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Weighted pullups, heavy dips, barbell squats, and athletic conditioning.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleJoin("WARRIOR-777")}
+                  className="w-full mt-4 text-xs font-bold border-white/10 hover:border-lime-electric/50"
+                >
+                  Join Warrior
+                </Button>
+              </Card>
+            </div>
+
+            {/* Create Squad CTA Box */}
+            <div className="p-6 rounded-2xl bg-charcoal-900/60 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-400" />
+                  Have Your Own Training Partners?
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Create a custom squad, get an instant private invite code, and link your lifting circle.
                 </p>
               </div>
-            </div>
-          </Card>
-        ) : (
-          <Card className="p-8 border-white/10 bg-gradient-to-br from-charcoal-900 via-charcoal-900 to-charcoal-850 text-center space-y-4">
-            <div className="h-14 w-14 rounded-2xl bg-lime-electric/10 text-lime-electric flex items-center justify-center mx-auto border border-lime-electric/20">
-              <Compass className="h-7 w-7" />
-            </div>
-            <div className="max-w-md mx-auto space-y-1">
-              <h3 className="text-xl font-black text-white">Join Your First Training Squad</h3>
-              <p className="text-xs text-muted-foreground">
-                Squads let you and your friends motivate each other, compete on weekly volume, and hype each other’s meals and PRs.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
               <Button
                 variant="default"
                 size="sm"
-                onClick={() => handleJoin("FORGE-884")}
-                className="font-bold shadow-lime-sm text-xs"
+                onClick={() => setShowCreateModal(true)}
+                className="text-xs font-bold h-10 px-5 shadow-lime-sm shrink-0"
               >
-                Join Iron Forge Syndicate (FORGE-884)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleJoin("DAWN-200")}
-                className="text-xs font-bold"
-              >
-                Join Dawn Patrol (DAWN-200)
-              </Button>
-              <Button
-                variant="subtle"
-                size="sm"
-                onClick={() => handleJoin("WARRIOR-777")}
-                className="text-xs font-bold"
-              >
-                Join Warrior Power (WARRIOR-777)
+                <Plus className="h-4 w-4 mr-1.5" />
+                Create New Squad
               </Button>
             </div>
-          </Card>
-        )}
+
+            {/* What Unlocks Feature Preview */}
+            <div className="space-y-3 pt-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Squad Network Features (Unlocked on Join)
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="p-4 rounded-2xl bg-charcoal-900/40 border border-white/5 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Trophy className="h-5 w-5 text-amber-400" />
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <h5 className="text-xs font-bold text-white">Live Volume Leaderboard</h5>
+                  <p className="text-[11px] text-muted-foreground">
+                    Ranked weekly by kilograms lifted from actual workout sets.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-charcoal-900/40 border border-white/5 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Utensils className="h-5 w-5 text-lime-electric" />
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <h5 className="text-xs font-bold text-white">Live Nutrition & Fuel Feed</h5>
+                  <p className="text-[11px] text-muted-foreground">
+                    Real-time teammate meals, high-protein badges & Tamil Nadu superfoods.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-charcoal-900/40 border border-white/5 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Flame className="h-5 w-5 text-rose-400" />
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <h5 className="text-xs font-bold text-white">PR Alerts & Hype Cheers</h5>
+                  <p className="text-[11px] text-muted-foreground">
+                    Automatic notification and 1-click cheer when a teammate breaks a record.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-charcoal-900/40 border border-white/5 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <ShieldCheck className="h-5 w-5 text-emerald-400" />
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <h5 className="text-xs font-bold text-white">Ironclad Body Privacy</h5>
+                  <p className="text-[11px] text-muted-foreground">
+                    Body weight and body fat % are 100% private and never exposed.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ================= SQUAD ACTIVE VIEW ================= */
+          <>
+            <Card className="p-6 sm:p-8 border-white/5 bg-gradient-to-r from-charcoal-900 via-charcoal-900 to-charcoal-850 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-9 w-9 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-black text-base border border-cyan-500/30">
+                      {currentGroup.name.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl sm:text-2xl font-black text-white">
+                          {currentGroup.name}
+                        </h2>
+                        {currentGroup.is_user_admin && (
+                          <Badge variant="gold" className="text-[10px] text-amber-300">
+                            Founder
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-xs sm:text-sm text-muted-foreground max-w-xl">
+                    {currentGroup.description}
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-muted-foreground pt-1">
+                    <span className="text-white font-bold">
+                      {currentGroupMembers.length} Active Lifters
+                    </span>
+                    <span>•</span>
+                    <span>Weekly Reset: Mondays 00:00 UTC</span>
+                    <span>•</span>
+                    <button
+                      onClick={() => setShowLeaveModal(true)}
+                      className="text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1 font-bold"
+                    >
+                      <LogOut className="h-3 w-3" /> Leave Squad
+                    </button>
+                  </div>
+                </div>
+
+                {/* Invite Code Box */}
+                <div className="bg-charcoal-950/85 border border-white/10 rounded-2xl p-4 flex flex-col items-center sm:items-end gap-2 shrink-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Private Invite Code
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl font-mono font-black text-lime-electric tracking-widest px-3 py-1 bg-charcoal-900 rounded-lg border border-lime-electric/30">
+                      {currentGroup.invite_code}
+                    </span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleCopyCode}
+                      className="h-9 px-3 text-xs"
+                      title="Copy code"
+                    >
+                      {copiedCode ? (
+                        <Check className="h-4 w-4 text-lime-electric" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Share with your gym partners to join this leaderboard.
+                  </p>
+                </div>
+              </div>
+            </Card>
 
         {/* Leaderboard & Challenges Split */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -859,6 +1028,8 @@ export default function SocialPage() {
           )}
           </div>
         </div>
+      </>
+    )}
 
         {/* Join Group Modal */}
         {showJoinModal && (

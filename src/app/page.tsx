@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Calendar,
   Sparkles,
+  Lock,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useFitness } from "@/lib/store/fitnessStore";
@@ -429,10 +430,27 @@ export default function DashboardPage() {
               </div>
 
               <div className="space-y-3">
-                {activityFeed.length === 0 ? (
+                {!primaryGroup ? (
+                  <div className="p-5 rounded-2xl bg-charcoal-950/60 border border-white/5 text-center space-y-2.5 py-6">
+                    <div className="h-8 w-8 rounded-full bg-charcoal-800 text-muted-foreground flex items-center justify-center mx-auto">
+                      <Lock className="h-4 w-4 text-emerald-400" />
+                    </div>
+                    <p className="text-xs font-bold text-white">Private Squad Network</p>
+                    <p className="text-xs text-muted-foreground">
+                      Join a squad to unlock your teammates&apos; live workout and food fuel feed.
+                    </p>
+                    <div className="pt-1">
+                      <Link href="/social">
+                        <Button size="sm" variant="default" className="text-xs h-8 font-bold shadow-lime-sm">
+                          Join or Create Squad →
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                ) : activityFeed.length === 0 ? (
                   <div className="p-5 rounded-2xl bg-charcoal-950/60 border border-white/5 text-center space-y-2.5 py-6">
                     <p className="text-xs text-muted-foreground">
-                      No activities logged yet. Complete a workout or log a fuel meal to start your live feed.
+                      Your squad feed is active! Complete a workout or log a fuel meal to share live motivation.
                     </p>
                     <div className="flex items-center justify-center gap-2 pt-1">
                       <Link href="/workouts">
